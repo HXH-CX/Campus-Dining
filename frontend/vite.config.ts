@@ -9,7 +9,10 @@ import type { ComponentResolver } from 'unplugin-vue-components/types'
  * `makeInstaller([...全部组件])`，摇树摇不掉 —— 实测打出来 944KB，和全量引入没区别。
  * 这里按组件目录逐个导入，才能只带上真正用到的组件。
  *
- * 子组件（ElTableColumn 之类）实际挂在父组件目录下，需要映射。
+ * 两个坑：
+ * 1. 子组件（ElTableColumn 之类）没有独立 JS 入口，组件本身要从父目录 index 导入；
+ * 2. 但它们的**样式是独立文件**（theme-chalk/el-breadcrumb-item.css），父组件的 style/css 并不会带上，
+ *    所以 sideEffects 必须把父目录和自己目录都写上，否则会出现"结构对但样式缺一块"（面包屑末尾多一个斜杠就是这么来的）。
  */
 const SUB_COMPONENT_DIR: Record<string, string> = {
   'table-column': 'table',
@@ -27,11 +30,12 @@ const elementPlusComponentResolver: ComponentResolver = (name: string) => {
   if (!/^El[A-Z]/.test(name)) return
   const partial = toKebab(name.slice(2))
   const dir = SUB_COMPONENT_DIR[partial] ?? partial
+  const parentStyle = `element-plus/es/components/${dir}/style/css`
+  const ownStyle = `element-plus/es/components/${partial}/style/css`
   return {
     name,
     from: `element-plus/es/components/${dir}/index`,
-    // 每个组件的 style/css 内部已经 import 了 base，这里只补自己那份
-    sideEffects: `element-plus/es/components/${dir}/style/css`,
+    sideEffects: dir === partial ? parentStyle : [parentStyle, ownStyle],
   }
 }
 
