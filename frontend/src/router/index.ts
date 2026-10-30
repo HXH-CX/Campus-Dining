@@ -26,6 +26,7 @@ const router = createRouter({
           props: true,
         },
         { path: 'dishes/:id', name: 'dish', component: () => import('@/views/DishDetailView.vue'), props: true },
+        { path: 'posts/:id', name: 'post', component: () => import('@/views/PostDetailView.vue'), props: true },
         {
           path: 'create',
           name: 'create',

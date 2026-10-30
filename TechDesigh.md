@@ -413,6 +413,8 @@ WHERE r.user_id = :uid AND r.updated_at >= NOW() - INTERVAL 30 DAY;
 
 配套约束：
 - **禁止** `import { ElMessage } from 'element-plus'`，统一从 `@/utils/feedback` 拿（内部走 `element-plus/es/components/message/index`），否则根 barrel 又会被拉进来。
+- **子组件的样式要单独引**：`ElTableColumn`、`ElFormItem`、`ElTabPane`、`ElBreadcrumbItem`、`ElDropdownMenu/Item`、`ElOption` 这类子组件**没有独立 JS 入口**（要从父目录 `index` 导入），但**样式是独立文件**（`theme-chalk/el-form-item.css`），父组件的 `style/css` 并不会带上。
+  resolver 里 `sideEffects` 必须同时写父目录和自己目录，否则会出现"结构正常但样式缺一块"——典型症状是面包屑末尾多出一个斜杠、表单项之间没有间距。
 - 函数式组件（Message / MessageBox）和指令（v-loading）不会自动带样式，样式在 `main.ts` 显式 `import 'element-plus/es/components/xxx/style/css'`。
 - 语言包改用 `<el-config-provider :locale="zhCn">` 下发（不再 `app.use(ElementPlus)`）。
 - `src/components.d.ts` 是插件生成的组件类型声明，**需要入库**，否则新克隆的仓库 `vue-tsc` 会报未知组件。

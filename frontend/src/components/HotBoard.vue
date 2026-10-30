@@ -33,7 +33,8 @@ onMounted(async () => {
 defineExpose({ reload })
 
 function go(post: Post): void {
-  router.push({ name: 'dish', params: { id: post.dish.id } })
+  // 热榜排的是"帖子"，点进去应该看这条食评本身；菜品在详情页里一点就到
+  router.push({ name: 'post', params: { id: post.id } })
 }
 </script>
 

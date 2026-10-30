@@ -45,7 +45,8 @@ async function submit(): Promise<void> {
   if (!auth.isLoggedIn) {
     ElMessage.warning('登录后才能评论')
     emit('update:modelValue', false)
-    router.push({ name: 'login', query: { redirect: `/dishes/${router.currentRoute.value.params.id}` } })
+    // 回跳到当前页面本身，而不是拼死一个 /dishes/${id}（在首页时 id 是 undefined）
+    router.push({ name: 'login', query: { redirect: router.currentRoute.value.fullPath } })
     return
   }
   const content = draft.value.trim()
