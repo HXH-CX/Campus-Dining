@@ -7,6 +7,9 @@ export interface UploadOutcome extends UploadResult {
   compress?: CompressResult
 }
 
+/** 与服务端 UPLOAD_MAX_MB=5 对齐。压缩成功后远低于它，这里只兜"压缩没生效"的情况 */
+const SERVER_MAX_BYTES = 5 * 1024 * 1024
+
 /**
  * 上传图片。**会先在浏览器端压缩**，再发 multipart。
  *
@@ -15,6 +18,10 @@ export interface UploadOutcome extends UploadResult {
  */
 export async function uploadImage(file: File, options: CompressOptions = {}): Promise<UploadOutcome> {
   const compress = await compressImage(file, options)
+  // 压缩没起作用（比如格式解不开）且超过服务端上限：提前拦下，别让用户等一个注定失败的请求
+  if (!compress.compressed && compress.file.size > SERVER_MAX_BYTES) {
+    throw new Error('图片压缩失败且超过 5MB，请换一张试试')
+  }
   const payload = await postFile(compress.file)
   return { ...payload, compress }
 }

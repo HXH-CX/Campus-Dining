@@ -444,6 +444,8 @@ WHERE r.user_id = :uid AND r.updated_at >= NOW() - INTERVAL 30 DAY;
 - 优先编码 WebP，浏览器不支持 WebP 编码时 `toBlob` 会回落成 PNG/JPEG，按 `blob.type` 换后缀 —— **后端会校验扩展名与文件头魔数一致，名字对不上会被拒**。
 - 三条放弃条件：类型不是 jpg/png/webp、体积 ≤300KB 且尺寸不超标、压缩结果反而更大 —— 都退回原图。
 - **任何异常都退回原图**：压缩是优化不是前置条件，不能因为它导致传不上去。
+- 但"压缩没生效 + 文件超过 5MB"会在 `uploadImage()` 里提前拦下（抛"图片压缩失败且超过 5MB"），
+  避免发一个注定被服务端 400 拒掉的请求。
 
 实测（Chrome 无头，带噪点 4000×3000 JPEG）：5.8MB → 360KB WebP，长边 1600，前端上传接口返回 `code=0`，静态访问 `Content-Type: image/webp`。
 
