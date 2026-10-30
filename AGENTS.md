@@ -86,5 +86,6 @@ alembic/          # 数据库迁移脚本
 10. **页面级请求失败必须渲染错误态**：使用 `<ErrorState :error="e" @retry="load">`，**不要**只弹 toast 留白屏，也不要把失败表现成"暂无数据"（那会让用户以为真的没内容）。错误分类统一走 `src/utils/error.ts`，不要在各处自己判断 `error.response.status`。
 11. **Element Plus 只能按需引入**：模板组件由自定义 resolver 自动引入；`ElMessage` / `ElMessageBox` 必须从 `@/utils/feedback` 导入，**禁止** `import ... from 'element-plus'`（根 barrel 会把整包 944KB 拖进产物）。新增用到的函数式组件时，记得在 `main.ts` 补它的 `style/css`。
 12. **列表页四条状态分支缺一不可**：`loading`（用 `AppSkeleton`）/ `error`（`ErrorState`）/ `empty`（文案）/ `content`。骨架不要用 `el-skeleton` 的文字条，形状对不上会跳版。
+13. **图片必须走 `uploadImage()` 上传**（内部先 `compressImage()` 再发 multipart）：它会按 `maxEdge` 缩放并转 WebP，异常时自动退回原图。**不要**直接 `xhr`/`fetch` 传原始 `File`。压缩后文件名后缀会跟着实际编码变（`.webp`），因为后端校验扩展名与文件头魔数一致。
 
 

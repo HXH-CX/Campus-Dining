@@ -6,6 +6,7 @@ import { ElMessage } from '@/utils/feedback'
 import { fetchCanteens, fetchCanteenMerchants, fetchMerchantDishes } from '@/api/catalog'
 import { createPost } from '@/api/post'
 import { uploadImage } from '@/api/upload'
+import { humanSize } from '@/utils/image'
 import ErrorState from '@/components/ErrorState.vue'
 import AppSkeleton from '@/components/AppSkeleton.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -28,6 +29,8 @@ const fileList = ref<UploadUserFile[]>([])
 const treeLoading = ref(true)
 const treeError = ref<unknown>(null)
 const submitting = ref(false)
+/** 累计压缩成效，用于在表单下方给一条轻提示 */
+const saved = reactive({ before: 0, after: 0, count: 0 })
 
 const dishId = computed(() => Number(cascaderValue.value[2] || 0))
 const dishLabel = computed(() => {
@@ -92,10 +95,21 @@ async function load(): Promise<void> {
 
 onMounted(load)
 
+const savedText = computed(() => {
+  if (!saved.count) return ''
+  const ratio = saved.before ? Math.round((1 - saved.after / saved.before) * 100) : 0
+  return `已自动压缩 ${saved.count} 张：${humanSize(saved.before)} → ${humanSize(saved.after)}（省 ${ratio}%）`
+})
+
 function customUpload(uploadOptions: UploadRequestOptions): Promise<unknown> {
   return uploadImage(uploadOptions.file as File)
     .then((result) => {
       images.value.push(result.url)
+      if (result.compress?.compressed) {
+        saved.count += 1
+        saved.before += result.compress.originalSize
+        saved.after += result.compress.size
+      }
       uploadOptions.onSuccess(result)
     })
     .catch((error: Error) => {
@@ -116,8 +130,10 @@ function beforeUpload(file: File): boolean {
     ElMessage.warning('只支持 jpg / png / webp')
     return false
   }
-  if (file.size > 5 * 1024 * 1024) {
-    ElMessage.warning('单张图片不能超过 5MB')
+  // 上限放宽到 20MB：图片会在上传前压到 1600px 长边，手机原图（3-5MB）根本到不了这个量，
+  // 设成 20MB 只是拦明显错误的文件（比如误选了视频）。
+  if (file.size > 20 * 1024 * 1024) {
+    ElMessage.warning('单张图片不能超过 20MB')
     return false
   }
   return true
@@ -192,7 +208,7 @@ async function submit(): Promise<void> {
           />
         </el-form-item>
 
-        <el-form-item label="图片（选填，最多 4 张，单张 ≤5MB）">
+        <el-form-item label="图片（选填，最多 4 张）">
           <el-upload
             v-model:file-list="fileList"
             list-type="picture-card"
@@ -204,6 +220,7 @@ async function submit(): Promise<void> {
           >
             <span class="plus">＋</span>
           </el-upload>
+          <div v-if="savedText" class="tiny saved">{{ savedText }}</div>
         </el-form-item>
 
         <div class="actions">
@@ -252,6 +269,11 @@ async function submit(): Promise<void> {
 .plus {
   font-size: 22px;
   color: var(--text-3);
+}
+
+.saved {
+  margin-top: 6px;
+  color: #4f8a2f;
 }
 
 .actions {

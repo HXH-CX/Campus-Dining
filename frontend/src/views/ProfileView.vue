@@ -114,7 +114,8 @@ function openEdit(): void {
 }
 
 function uploadAvatar(options: UploadRequestOptions): Promise<unknown> {
-  return uploadImage(options.file as File)
+  // 头像最大显示 72px，400px 足够覆盖 3x 屏
+  return uploadImage(options.file as File, { maxEdge: 400, quality: 0.85 })
     .then((result) => {
       editForm.avatar_url = result.url
       options.onSuccess(result)

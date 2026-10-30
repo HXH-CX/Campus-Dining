@@ -44,7 +44,7 @@
 ### 3.3.2 图片上传
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/uploads/images` 🔒 | `multipart/form-data` 单文件上传，返回 `{"url": "/uploads/2026/10/xxx.jpg"}`。限制 5MB，仅 jpg/jpeg/png/webp。发帖/改头像时引用该 URL |
+| POST | `/uploads/images` 🔒 | `multipart/form-data` 单文件上传，返回 `{"url": "/uploads/2026/10/xxx.jpg"}`。服务端限制 5MB、仅 jpg/jpeg/png/webp，并校验文件头魔数；前端会先压缩（见 3.12.3）。发帖/改头像时引用该 URL |
 
 > **形态定稿**：图片**先上传、后引用**。发帖接口走 JSON body 携带 `images: [url...]`，不使用 multipart 混合提交，避免前端 FormData 与 Pydantic 校验打架。
 
@@ -427,3 +427,25 @@ WHERE r.user_id = :uid AND r.updated_at >= NOW() - INTERVAL 30 DAY;
 | 首屏 JS | 634 KB（其中 element-plus 448 KB 全量） | 286 KB |
 | 首屏 CSS | 363 KB | 53 KB |
 | 按需 EP 组件总量 | 944 KB | 448 KB |
+
+### 3.12.3 图片上传前压缩（`utils/image.ts`）
+手机拍的食物照通常 3-5MB / 4000px 宽，而卡片里最宽只显示到 600px 左右，原样上传既慢又占磁盘。
+`uploadImage(file, options)` 内部先用 `compressImage()` 压缩再发 multipart，**所有上传入口自动生效**（发帖、头像、菜品封面）。
+
+| 场景 | maxEdge | 说明 |
+|---|---|---|
+| 帖子配图 | 1600（默认） | 详情页大图要清晰 |
+| 菜品封面 | 1200 | 列表 200px / 详情 600px |
+| 用户头像 | 400 | 最大显示 72px，够 3x 屏 |
+
+实现要点：
+- 用 `createImageBitmap(file, { imageOrientation: 'from-image' })` 解码，让竖拍照片按 EXIF 摆正；老浏览器退回 `<img>` + objectURL。
+- canvas 缩放时先铺白底：PNG 透明区转 JPEG 会变黑。
+- 优先编码 WebP，浏览器不支持 WebP 编码时 `toBlob` 会回落成 PNG/JPEG，按 `blob.type` 换后缀 —— **后端会校验扩展名与文件头魔数一致，名字对不上会被拒**。
+- 三条放弃条件：类型不是 jpg/png/webp、体积 ≤300KB 且尺寸不超标、压缩结果反而更大 —— 都退回原图。
+- **任何异常都退回原图**：压缩是优化不是前置条件，不能因为它导致传不上去。
+
+实测（Chrome 无头，带噪点 4000×3000 JPEG）：5.8MB → 360KB WebP，长边 1600，前端上传接口返回 `code=0`，静态访问 `Content-Type: image/webp`。
+
+配套调整：前端 `beforeUpload` 的体积上限从 5MB 放宽到 20MB（压缩在后，5MB 只会误伤手机原图），
+服务端 `UPLOAD_MAX_MB` 保持 5 —— 压缩后的文件远低于它，留作兜底。

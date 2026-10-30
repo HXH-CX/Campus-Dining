@@ -66,7 +66,8 @@ function openEdit(row: Dish): void {
 }
 
 function customUpload(options: UploadRequestOptions): Promise<unknown> {
-  return uploadImage(options.file as File)
+  // 封面在列表里显示 ~200px，详情页 ~600px
+  return uploadImage(options.file as File, { maxEdge: 1200 })
     .then((result) => {
       form.image_url = result.url
       options.onSuccess(result)
