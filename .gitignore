@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# 上传的图片不入库
+uploads/
+
+# 前端
+node_modules/
+frontend/dist/
+frontend/.npm-cache/
+frontend/node_modules/.vite/
+
+# 编辑器
+.idea/
+.vscode/
+.DS_Store
+
+# 日志
+*.log
