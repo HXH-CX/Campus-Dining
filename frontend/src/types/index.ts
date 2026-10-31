@@ -45,6 +45,7 @@ export interface UserCard {
   title_emoji: string
   is_mutual: boolean
   followed_by_me: boolean
+  follower_count: number
 }
 
 export interface Canteen {

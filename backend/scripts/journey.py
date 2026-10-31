@@ -410,6 +410,32 @@ def main():
     call("POST", f"/users/{kiki_id}/follow", token=token)  # 取关，撤销关注通知，收尾
     check("取关撤销通知", notes_of(kiki_token, me["id"], "follow") == [], "仍存在")
 
+    print("== 5.3 我赞过的帖子（仅本人）")
+    status, body = call("GET", f"/users/{me['id']}/liked-posts")
+    check("未登录看点赞列表被拒", status == 401, body)
+
+    status, body = call("GET", f"/users/{me['id']}/liked-posts?page_size=10", token=token)
+    check("点赞列表分页字段", status == 200 and {"items", "total", "page", "page_size"} <= set(body["data"]), body)
+    if body["data"]["items"]:
+        need("点赞列表项字段", body["data"]["items"][0], ["id", "author", "dish", "like_count", "is_liked"])
+        check(
+            "列表里全是已赞状态",
+            all(item["is_liked"] for item in body["data"]["items"]),
+            [item["id"] for item in body["data"]["items"] if not item["is_liked"]],
+        )
+
+    status, body = call("GET", f"/users/{kiki_id}/liked-posts", token=token)
+    check("看别人的点赞被拒（40301）", status == 403 and body["code"] == 40301, body)
+
+    # 新点的赞要排在最前面（按点赞时间而不是发帖时间排序）
+    feed = call("GET", "/posts/feed?sort=latest&page_size=20", token=token)[1]["data"]["items"]
+    target = next((p for p in feed if not p["is_liked"]), None)
+    if target is not None:
+        call("POST", f"/posts/{target['id']}/like", token=token)
+        status, body = call("GET", f"/users/{me['id']}/liked-posts?page_size=5", token=token)
+        check("最新点赞排在最前", status == 200 and body["data"]["items"][0]["id"] == target["id"], body["data"]["items"])
+        call("POST", f"/posts/{target['id']}/like", token=token)  # 取消，回到初始状态
+
     print("== 5.1 编辑帖子（只改文案与配图）")
     new_text = "改过的文案：还行，就是有点咸"
     status, body = call("PUT", f"/posts/{post_id}", {"content": new_text}, token=token)
@@ -574,6 +600,34 @@ def main():
     check("空结果不报错", status == 200 and body["data"]["total"] == 0, body)
     status, body = call("GET", "/posts/feed?keyword=" + urllib.parse.quote("辣"))
     check("帖子文案搜索", status == 200, body)
+
+    status, body = call("GET", "/merchants?keyword=" + urllib.parse.quote("拉面"))
+    check("搜商家名", status == 200 and body["data"]["total"] >= 1, body)
+    need("商家搜索结果字段", body["data"]["items"][0], ["id", "name", "canteen_name", "overall_rating", "dish_count"])
+    check("商家搜索分页字段", {"items", "total", "page", "page_size"} <= set(body["data"]), body["data"])
+
+    status, body = call("GET", "/users?keyword=" + urllib.parse.quote("红红"))
+    check("搜用户昵称", status == 200 and body["data"]["total"] >= 1, body)
+    need(
+        "用户搜索结果字段",
+        body["data"]["items"][0],
+        ["id", "nickname", "title_name", "title_emoji", "is_mutual", "followed_by_me", "follower_count"],
+    )
+    check(
+        "匿名搜人时不带关注态",
+        all(item["followed_by_me"] is False and item["is_mutual"] is False for item in body["data"]["items"]),
+        body["data"]["items"],
+    )
+
+    # 登录后 followed_by_me 要反映真实关系（xiaoming 关注了 lanzhou_only）
+    status, body = call("GET", "/users?keyword=" + urllib.parse.quote("拉面忠粉"), token=token)
+    check(
+        "登录后带回已关注标记",
+        status == 200 and body["data"]["items"] and body["data"]["items"][0]["followed_by_me"] is True,
+        body["data"]["items"],
+    )
+    status, body = call("GET", "/users?keyword=" + urllib.parse.quote("绝无此人"))
+    check("搜人空结果不报错", status == 200 and body["data"]["total"] == 0, body)
 
     print("== 12. 修改资料")
     _, me = call("GET", "/users/me", token=token)

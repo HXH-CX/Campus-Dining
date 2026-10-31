@@ -176,6 +176,28 @@ async def list_posts(
     return await _with_like_state(db, rows, viewer), total
 
 
+async def list_liked_posts(
+    db: AsyncSession, user_id: int, offset: int, limit: int, viewer: User | None
+) -> tuple[list[PostOut], int]:
+    """我点赞过的帖子，按点赞时间倒序（不是发帖时间）。
+
+    点赞在这类产品里等价于"先存着回头再看"，之前只在卡片上留了个数字，
+    用户找不到回去的路。排序按点赞时间，是因为用户回忆的线索通常是
+    "我前两天赞过的那条"，而不是它哪天发的。
+    """
+    total = int(
+        await db.scalar(select(func.count()).select_from(Like).where(Like.user_id == user_id)) or 0
+    )
+    stmt = (
+        _base_query()
+        .join(Like, Like.post_id == Post.id)
+        .where(Like.user_id == user_id)
+        .order_by(Like.created_at.desc(), Post.id.desc())
+    )
+    rows = (await db.execute(stmt.offset(offset).limit(limit))).all()
+    return await _with_like_state(db, rows, viewer), total
+
+
 async def get_post(db: AsyncSession, post_id: int, viewer: User | None = None) -> PostOut:
     row = (await db.execute(_base_query().where(Post.id == post_id))).first()
     if row is None:

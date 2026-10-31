@@ -53,6 +53,7 @@
 |---|---|---|
 | GET | `/canteens` | 食堂列表 |
 | GET | `/canteens/{id}/merchants` | 某食堂下的商家列表（含综合评分） |
+| GET | `/merchants` | 商家搜索：`?keyword=` 按名字模糊匹配，留空返回全部；评分口径与食堂页一致（只算上架菜品），按综合评分倒序 |
 | GET | `/merchants/{id}` | 商家详情（综合评分、菜品数） |
 | GET | `/merchants/{id}/dishes` | 商家菜品列表（`?include_unavailable=false` 默认只返回上架） |
 | GET | `/merchants/{id}/posts` | 该商家下所有帖子的分页流 |
@@ -82,7 +83,9 @@
 ### 3.3.5 用户模块
 | 方法 | 路径 | 说明 |
 |---|---|---|
+| GET | `/users` | 用户搜索：`?keyword=` 按昵称模糊匹配，粉丝多的排前面；登录后 `followed_by_me` / `is_mutual` 相对当前用户 |
 | GET | `/users/{id}` | 用户公开主页信息 |
+| GET | `/users/{id}/liked-posts` 🔒 | 我赞过的帖子，按**点赞时间**倒序；仅本人可看，别人的 id 返回 40301 |
 | PUT | `/users/me` 🔒 | 改昵称 / 头像（`avatar_url` 传 null 表示清空；用户名与称号不可改） |
 | GET | `/users/{id}/posts` | 该用户的帖子列表 |
 | GET | `/users/{id}/ratings` | 该用户的评价记录（公开） |

@@ -96,6 +96,31 @@ async def _ensure_user(db: AsyncSession, user_id: int) -> None:
         raise NotFound("用户不存在")
 
 
+async def search_users(
+    db: AsyncSession, keyword: str, viewer: User | None, offset: int, limit: int
+) -> tuple[list[UserCard], int]:
+    """按昵称搜人。
+
+    搜索页此前只有「菜品 / 帖子」——能搜到内容，却搜不到人，
+    而"关注"的前提正是先找到人。这里把 owner 当成 viewer 自己，
+    于是 is_mutual / followed_by_me 都按"我"算，语义正好对。
+    """
+    kw = keyword.strip()
+    conditions = [User.nickname.like(f"%{kw}%")] if kw else []
+    total = int(await db.scalar(select(func.count()).select_from(User).where(*conditions)) or 0)
+    ids = (
+        await db.execute(
+            select(User.id)
+            .where(*conditions)
+            # 粉丝多的排前面：搜同名的两个人时，更活跃的那个通常才是用户想找的
+            .order_by(User.follower_count.desc(), User.id)
+            .offset(offset)
+            .limit(limit)
+        )
+    ).scalars().all()
+    return await _cards(db, list(ids), viewer.id if viewer else 0, viewer), total
+
+
 async def _cards(
     db: AsyncSession, ids: list[int], owner_id: int, viewer: User | None
 ) -> list[UserCard]:
@@ -148,6 +173,7 @@ async def _cards(
                 title_emoji=title["emoji"],
                 is_mutual=user_id in owner_to_ids and user_id in ids_to_owner,
                 followed_by_me=user_id in viewer_following,
+                follower_count=user.follower_count,
             )
         )
     return cards

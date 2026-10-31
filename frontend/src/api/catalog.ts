@@ -48,6 +48,11 @@ export function searchDishes(keyword: string, page = 1, pageSize = 20) {
   return get<PageData<Dish>>('/dishes', { keyword, page, page_size: pageSize })
 }
 
+/** 按商家名模糊搜索；keyword 为空则返回全部商家（按综合评分倒序） */
+export function searchMerchants(keyword: string, page = 1, pageSize = 12) {
+  return get<PageData<Merchant>>('/merchants', { keyword, page, page_size: pageSize })
+}
+
 export function fetchDishRatings(dishId: number, page = 1, pageSize = 10) {
   return get<PageData<{ user_id: number; nickname: string; avatar_url: string | null; score: number; updated_at: string }>>(
     `/dishes/${dishId}/ratings`,

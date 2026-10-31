@@ -1,9 +1,9 @@
 """用户：个人信息、帖子、评价、评论、关注/粉丝。"""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser, Paging
-from app.core.exceptions import NotFound
+from app.core.exceptions import Forbidden, NotFound
 from app.core.response import ApiResponse, PageData, ok, paginated
 from app.models.user import User
 from app.schemas.catalog import DishOut
@@ -13,6 +13,17 @@ from app.services import post_service, social_service, title_service, user_servi
 from app.services.user_service import to_user_out
 
 router = APIRouter(prefix="/users", tags=["用户"])
+
+
+@router.get("", response_model=ApiResponse[PageData[UserCard]], summary="用户搜索（按昵称）")
+async def search_users_route(
+    db: DbSession,
+    paging: Paging,
+    viewer: OptionalUser,
+    keyword: str = Query("", max_length=50, description="按昵称模糊匹配，留空返回全部用户"),
+):
+    items, total = await social_service.search_users(db, keyword, viewer, paging.offset, paging.limit)
+    return paginated(items, total, paging.page, paging.page_size)
 
 
 # 注意：/me 必须注册在 /{user_id} 之前，否则会被路径参数吞掉
@@ -43,6 +54,19 @@ async def user_posts(user_id: int, db: DbSession, paging: Paging, viewer: Option
     items, total = await post_service.list_posts(
         db, offset=paging.offset, limit=paging.limit, viewer=viewer, user_id=user_id
     )
+    return paginated(items, total, paging.page, paging.page_size)
+
+
+# 只对自己开放：点过赞什么是隐私，不该被同学翻出来
+@router.get(
+    "/{user_id}/liked-posts",
+    response_model=ApiResponse[PageData[PostOut]],
+    summary="我赞过的帖子（仅本人）",
+)
+async def user_liked_posts(user_id: int, db: DbSession, paging: Paging, current: CurrentUser):
+    if current.id != user_id:
+        raise Forbidden("只能查看自己的点赞")
+    items, total = await post_service.list_liked_posts(db, user_id, paging.offset, paging.limit, current)
     return paginated(items, total, paging.page, paging.page_size)
 
 

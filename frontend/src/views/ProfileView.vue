@@ -3,7 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { UploadRequestOptions, UploadUserFile } from 'element-plus'
 import { ElMessage } from '@/utils/feedback'
-import { fetchFollowers, fetchFollowing, fetchUser, fetchUserComments, fetchUserPosts, fetchUserRatings, fetchUserWants, toggleFollow, updateMe } from '@/api/user'
+import { fetchFollowers, fetchFollowing, fetchLikedPosts, fetchUser, fetchUserComments, fetchUserPosts, fetchUserRatings, fetchUserWants, toggleFollow, updateMe } from '@/api/user'
 import { toggleWant } from '@/api/catalog'
 import { deleteComment } from '@/api/post'
 import { isNotFound } from '@/api/request'
@@ -32,9 +32,16 @@ const wantsLoaded = ref(false)
 const wantsLoading = ref(false)
 const wantsTotal = ref(0)
 const wantRemoving = ref<number | null>(null)
+// 我赞过的：同样按需加载，且只有本人能看
+const liked = ref<Post[]>([])
+const likedLoaded = ref(false)
+const likedLoading = ref(false)
+const likedTotal = ref(0)
+const likedPage = ref(1)
+const likedError = ref<unknown>(null)
 // 计数用后端返回的 total，而不是当前页条数
 const totals = ref({ posts: 0, ratings: 0, comments: 0, followers: 0, following: 0 })
-const tab = ref<'posts' | 'ratings' | 'wants' | 'comments' | 'following' | 'followers'>('posts')
+const tab = ref<'posts' | 'ratings' | 'wants' | 'liked' | 'comments' | 'following' | 'followers'>('posts')
 const loading = ref(true)
 const error = ref<unknown>(null)
 const removing = ref<number | null>(null)
@@ -120,6 +127,11 @@ function onLiked(payload: { id: number; liked: boolean; like_count: number }): v
 
 function onDeleted(id: number): void {
   posts.value = posts.value.filter((item) => item.id !== id)
+  // 「我赞过的」里也可能删帖，两边都要摘掉，否则会留下一张点不开的卡
+  if (liked.value.some((item) => item.id === id)) {
+    liked.value = liked.value.filter((item) => item.id !== id)
+    likedTotal.value = Math.max(0, likedTotal.value - 1)
+  }
 }
 
 function goPost(postId: number): void {
@@ -139,9 +151,40 @@ async function loadWants(): Promise<void> {
   }
 }
 
+async function loadLiked(page = 1): Promise<void> {
+  if (!userId.value || likedLoading.value) return
+  likedLoading.value = true
+  if (page === 1) likedError.value = null
+  try {
+    const data = await fetchLikedPosts(userId.value, page, 10)
+    liked.value = page === 1 ? data.items : [...liked.value, ...data.items]
+    likedTotal.value = data.total
+    likedPage.value = page
+    likedLoaded.value = true
+  } catch (e) {
+    if (page === 1) likedError.value = e
+  } finally {
+    likedLoading.value = false
+  }
+}
+
+/** 在这个 tab 里取消点赞，帖子应当立刻消失——它已经不属于"赞过的"了 */
+function onLikedInLikedTab(payload: { id: number; liked: boolean; like_count: number }): void {
+  const target = liked.value.find((item) => item.id === payload.id)
+  if (target) {
+    target.is_liked = payload.liked
+    target.like_count = payload.like_count
+  }
+  if (!payload.liked) {
+    liked.value = liked.value.filter((item) => item.id !== payload.id)
+    likedTotal.value = Math.max(0, likedTotal.value - 1)
+  }
+}
+
 // 想吃清单懒加载：只有真的点开这个 tab 才请求
 watch(tab, (next) => {
   if (next === 'wants' && !wantsLoaded.value) void loadWants()
+  if (next === 'liked' && !likedLoaded.value) void loadLiked(1)
 })
 
 /** 移除想吃：这个 tab 里只给本人显示按钮，别人的清单只看不改 */
@@ -334,6 +377,36 @@ async function saveProfile(): Promise<void> {
           </div>
         </el-tab-pane>
 
+        <el-tab-pane v-if="isSelf" :label="`我赞过的${likedLoaded ? ' ' + likedTotal : ''}`" name="liked">
+          <AppSkeleton v-if="likedLoading && !liked.length" variant="post" :count="2" />
+
+          <ErrorState
+            v-else-if="likedError"
+            :error="likedError"
+            title="赞过的帖子没加载出来"
+            @retry="loadLiked(1)"
+          />
+
+          <div v-else-if="!liked.length" class="card empty">
+            还没赞过任何帖子，看到喜欢的点个赞，就会收在这里
+          </div>
+
+          <template v-else>
+            <PostCard
+              v-for="post in liked"
+              :key="post.id"
+              :post="post"
+              @liked="onLikedInLikedTab"
+              @deleted="onDeleted"
+            />
+            <div v-if="liked.length < likedTotal" class="load-more">
+              <el-button :loading="likedLoading" round @click="loadLiked(likedPage + 1)">
+                加载更多（{{ liked.length }} / {{ likedTotal }}）
+              </el-button>
+            </div>
+          </template>
+        </el-tab-pane>
+
         <el-tab-pane :label="`${isSelf ? '我' : 'TA'}的评论 ${totals.comments}`" name="comments">
           <div v-if="!comments.length" class="card empty">还没有评论过别人的食评</div>
           <div v-else class="card">
@@ -508,6 +581,12 @@ h1 {
 
 .tabs {
   margin-top: 12px;
+}
+
+.load-more {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0 4px;
 }
 
 .rating-item,

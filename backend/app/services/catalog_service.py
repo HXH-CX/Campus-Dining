@@ -100,6 +100,42 @@ async def list_merchants(db: AsyncSession, canteen_id: int | None = None) -> lis
     ]
 
 
+async def search_merchants(db: AsyncSession, keyword: str, offset: int, limit: int) -> tuple[list[MerchantOut], int]:
+    """按商家名搜索。
+
+    评分口径与 list_merchants 一致（只算上架菜品），否则搜出来的分数会和
+    食堂页里看到的对不上。排序按综合评分倒序，同分看菜品数。
+    """
+    kw = keyword.strip()
+    conditions = [Merchant.name.like(f"%{kw}%")] if kw else []
+
+    total = int(await db.scalar(select(func.count()).select_from(Merchant).where(*conditions)) or 0)
+    stmt = (
+        select(Merchant, Canteen.name, _OVERALL, _DISH_COUNT)
+        .join(Canteen, Merchant.canteen_id == Canteen.id)
+        .outerjoin(Dish, and_(Dish.merchant_id == Merchant.id, Dish.is_available.is_(True)))
+        .where(*conditions)
+        .group_by(Merchant.id, Canteen.name)
+        .order_by(_OVERALL.desc(), _DISH_COUNT.desc(), Merchant.id)
+        .offset(offset)
+        .limit(limit)
+        .options(noload(Merchant.canteen))
+    )
+    rows = (await db.execute(stmt)).all()
+    items = [
+        MerchantOut(
+            id=m.id,
+            name=m.name,
+            canteen_id=m.canteen_id,
+            canteen_name=canteen_name,
+            overall_rating=float(overall or 0),
+            dish_count=int(dish_count or 0),
+        )
+        for m, canteen_name, overall, dish_count in rows
+    ]
+    return items, total
+
+
 async def get_merchant(db: AsyncSession, merchant_id: int) -> MerchantOut:
     stmt = (
         select(Merchant, Canteen.name, _OVERALL, _DISH_COUNT)

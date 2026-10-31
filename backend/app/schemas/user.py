@@ -53,6 +53,7 @@ class UserCard(BaseModel):
     title_emoji: str
     is_mutual: bool = False
     followed_by_me: bool = False
+    follower_count: int = 0
 
 
 class UserRatingOut(BaseModel):

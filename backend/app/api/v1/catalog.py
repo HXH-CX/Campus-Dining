@@ -28,6 +28,20 @@ async def list_merchants(canteen_id: int, db: DbSession):
     return ok(await catalog_service.list_merchants(db, canteen_id=canteen_id))
 
 
+@router.get(
+    "/merchants",
+    response_model=ApiResponse[PageData[MerchantOut]],
+    summary="商家搜索（按名字模糊匹配）",
+)
+async def search_merchants_route(
+    db: DbSession,
+    paging: Paging,
+    keyword: str = Query("", max_length=50, description="按商家名模糊匹配，留空返回全部"),
+):
+    items, total = await catalog_service.search_merchants(db, keyword, paging.offset, paging.limit)
+    return paginated(items, total, paging.page, paging.page_size)
+
+
 @router.get("/merchants/{merchant_id}", response_model=ApiResponse[MerchantOut], summary="商家详情")
 async def get_merchant(merchant_id: int, db: DbSession):
     return ok(await catalog_service.get_merchant(db, merchant_id))
