@@ -1,5 +1,5 @@
 import { get, post, put } from './request'
-import type { PageData, Post, RatingItem, User, UserCard } from '@/types'
+import type { PageData, Post, RatingItem, User, UserCard, UserCommentItem } from '@/types'
 
 export function fetchMe() {
   return get<User>('/users/me')
@@ -20,6 +20,10 @@ export function fetchUserPosts(userId: number, page = 1, pageSize = 10) {
 
 export function fetchUserRatings(userId: number, page = 1, pageSize = 10) {
   return get<PageData<RatingItem>>(`/users/${userId}/ratings`, { page, page_size: pageSize })
+}
+
+export function fetchUserComments(userId: number, page = 1, pageSize = 20) {
+  return get<PageData<UserCommentItem>>(`/users/${userId}/comments`, { page, page_size: pageSize })
 }
 
 export function fetchFollowers(userId: number, page = 1, pageSize = 12) {

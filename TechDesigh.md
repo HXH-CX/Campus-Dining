@@ -81,7 +81,8 @@
 | GET | `/users/{id}` | 用户公开主页信息 |
 | PUT | `/users/me` 🔒 | 改昵称 / 头像（`avatar_url` 传 null 表示清空；用户名与称号不可改） |
 | GET | `/users/{id}/posts` | 该用户的帖子列表 |
-| GET | `/users/{id}/ratings` | 该用户的"我的评价"列表 🔒（仅本人可看全量） |
+| GET | `/users/{id}/ratings` | 该用户的评价记录（公开） |
+| GET | `/users/{id}/comments` | 该用户发过的评论，含所属帖子 `{id, dish_name, excerpt, image_url}`，用于回跳原帖（公开） |
 | GET | `/users/{id}/followers` | 粉丝列表（带 `is_mutual` 互关标记） |
 | GET | `/users/{id}/following` | 关注列表（带 `is_mutual`） |
 | POST | `/users/{id}/follow` 🔒 | 关注/取消关注（幂等切换），维护两侧计数 |

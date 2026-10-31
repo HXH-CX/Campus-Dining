@@ -216,6 +216,13 @@ def main():
     need("评价项字段", body["data"]["items"][0], ["dish", "score", "updated_at"])
     need("评价里的菜品字段", body["data"]["items"][0]["dish"], ["id", "name", "image_url", "avg_rating", "rating_count"])
 
+    status, body = call("GET", f"/users/{post['author']['id']}/comments?page=1&page_size=20")
+    check("用户评论（刚发过 1 条）", status == 200 and body["data"]["total"] >= 1, body)
+    comment_row = body["data"]["items"][0]
+    need("评论项字段", comment_row, ["id", "content", "created_at", "post"])
+    need("评论所属帖子字段", comment_row["post"], ["id", "dish_name", "excerpt", "image_url"])
+    check("评论能定位回原帖", comment_row["post"]["id"] == post_id, comment_row["post"])
+
     status, body = call("GET", f"/users/{post['author']['id']}/followers?page=1&page_size=30")
     check("粉丝列表", status == 200, body)
     if body["data"]["items"]:

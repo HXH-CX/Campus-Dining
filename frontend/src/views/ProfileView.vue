@@ -3,7 +3,8 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { UploadRequestOptions, UploadUserFile } from 'element-plus'
 import { ElMessage } from '@/utils/feedback'
-import { fetchFollowers, fetchFollowing, fetchUser, fetchUserPosts, fetchUserRatings, toggleFollow, updateMe } from '@/api/user'
+import { fetchFollowers, fetchFollowing, fetchUser, fetchUserComments, fetchUserPosts, fetchUserRatings, toggleFollow, updateMe } from '@/api/user'
+import { deleteComment } from '@/api/post'
 import { isNotFound } from '@/api/request'
 import { uploadImage } from '@/api/upload'
 import { useAuthStore } from '@/stores/auth'
@@ -12,7 +13,7 @@ import RatingStars from '@/components/RatingStars.vue'
 import AppSkeleton from '@/components/AppSkeleton.vue'
 import ErrorState from '@/components/ErrorState.vue'
 import { formatDate, timeAgo } from '@/utils/format'
-import type { Post, RatingItem, User, UserCard } from '@/types'
+import type { Post, RatingItem, User, UserCard, UserCommentItem } from '@/types'
 
 const props = defineProps<{ id?: string }>()
 const router = useRouter()
@@ -21,13 +22,15 @@ const auth = useAuthStore()
 const user = ref<User | null>(null)
 const posts = ref<Post[]>([])
 const ratings = ref<RatingItem[]>([])
+const comments = ref<UserCommentItem[]>([])
 const followers = ref<UserCard[]>([])
 const following = ref<UserCard[]>([])
 // 计数用后端返回的 total，而不是当前页条数
-const totals = ref({ posts: 0, ratings: 0, followers: 0, following: 0 })
-const tab = ref<'posts' | 'ratings' | 'following' | 'followers'>('posts')
+const totals = ref({ posts: 0, ratings: 0, comments: 0, followers: 0, following: 0 })
+const tab = ref<'posts' | 'ratings' | 'comments' | 'following' | 'followers'>('posts')
 const loading = ref(true)
 const error = ref<unknown>(null)
+const removing = ref<number | null>(null)
 
 const userId = computed(() => (props.id ? Number(props.id) : auth.user?.id || 0))
 const isSelf = computed(() => auth.user?.id === user.value?.id)
@@ -37,21 +40,24 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const [u, p, r, frs, fing] = await Promise.all([
+    const [u, p, r, cm, frs, fing] = await Promise.all([
       fetchUser(userId.value),
       fetchUserPosts(userId.value, 1, 20),
       fetchUserRatings(userId.value, 1, 20),
+      fetchUserComments(userId.value, 1, 20),
       fetchFollowers(userId.value, 1, 30),
       fetchFollowing(userId.value, 1, 30),
     ])
     user.value = u
     posts.value = p.items
     ratings.value = r.items
+    comments.value = cm.items
     followers.value = frs.items
     following.value = fing.items
     totals.value = {
       posts: p.total,
       ratings: r.total,
+      comments: cm.total,
       followers: frs.total,
       following: fing.total,
     }
@@ -97,6 +103,27 @@ function onLiked(payload: { id: number; liked: boolean; like_count: number }): v
 
 function onDeleted(id: number): void {
   posts.value = posts.value.filter((item) => item.id !== id)
+}
+
+function goPost(postId: number): void {
+  router.push({ name: 'post', params: { id: postId } })
+}
+
+/** 删除自己的评论。这里只是入口之一，同一接口在详情页/评论弹窗也能用 */
+async function removeComment(item: UserCommentItem): Promise<void> {
+  if (removing.value) return
+  removing.value = item.id
+  try {
+    await deleteComment(item.post.id, item.id)
+    comments.value = comments.value.filter((row) => row.id !== item.id)
+    // 接口返回的是「该帖子」的评论数，这里的计数是「这个人」发过的评论数，所以要自己减
+    totals.value.comments = Math.max(0, totals.value.comments - 1)
+    ElMessage.success('评论已删除')
+  } catch {
+    // 拦截器已提示
+  } finally {
+    removing.value = null
+  }
 }
 
 // ---- 编辑资料
@@ -178,6 +205,7 @@ async function saveProfile(): Promise<void> {
             <span><b>{{ user.following_count }}</b> 关注</span>
             <span><b>{{ totals.posts }}</b> 帖子</span>
             <span><b>{{ totals.ratings }}</b> 评价</span>
+            <span><b>{{ totals.comments }}</b> 评论</span>
           </div>
         </div>
 
@@ -211,6 +239,37 @@ async function saveProfile(): Promise<void> {
               </div>
               <RatingStars :value="item.score" show-score />
               <span class="tiny">{{ timeAgo(item.updated_at) }}</span>
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane :label="`${isSelf ? '我' : 'TA'}的评论 ${totals.comments}`" name="comments">
+          <div v-if="!comments.length" class="card empty">还没有评论过别人的食评</div>
+          <div v-else class="card">
+            <div v-for="item in comments" :key="item.id" class="comment-item">
+              <img
+                v-if="item.post.image_url"
+                :src="item.post.image_url"
+                class="thumb"
+                :alt="item.post.dish_name"
+                @click="goPost(item.post.id)"
+              />
+              <span v-else class="thumb img-fallback" @click="goPost(item.post.id)">
+                {{ item.post.dish_name.slice(0, 1) }}
+              </span>
+
+              <div class="c-body">
+                <p class="c-text">{{ item.content }}</p>
+                <div class="tiny c-src" @click="goPost(item.post.id)">
+                  评论于「{{ item.post.dish_name }}」的食评
+                  <span v-if="item.post.excerpt">· {{ item.post.excerpt }}…</span>
+                  <span class="c-time">{{ timeAgo(item.created_at) }}</span>
+                </div>
+              </div>
+
+              <button v-if="isSelf" class="c-del" :disabled="removing === item.id" @click="removeComment(item)">
+                删除
+              </button>
             </div>
           </div>
         </el-tab-pane>
@@ -368,6 +427,68 @@ h1 {
   padding: 10px 0;
   border-bottom: 1px dashed var(--line);
   cursor: pointer;
+}
+
+/* 评论项：三列布局，内容占满中间，删除按钮贴右 */
+.comment-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.comment-item:last-child {
+  border-bottom: none;
+}
+
+.comment-item .thumb {
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.c-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.c-text {
+  margin: 0 0 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.c-src {
+  cursor: pointer;
+  color: var(--text-3);
+}
+
+.c-src:hover {
+  color: var(--brand-dark);
+}
+
+.c-time {
+  margin-left: 6px;
+}
+
+.c-del {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+.c-del:hover {
+  color: #e8452c;
+}
+
+.c-del:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .rating-item:last-child,

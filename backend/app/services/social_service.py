@@ -1,4 +1,4 @@
-"""关注关系与"我的评价"。
+"""关注关系、"我的评价"与"我的评论"。
 
 关注是单向的，互关不单独建模：两侧都能查到边即为互关，查询时推导 is_mutual。
 """
@@ -9,11 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import BadRequest, NotFound
 from app.core.titles import title_of
 from app.models.catalog import Dish
+from app.models.post import Comment, Post
 from app.models.rating import Rating
 from app.models.social import Follow
 from app.models.user import User
 from app.schemas.catalog import DishBrief
-from app.schemas.user import UserCard, UserRatingOut
+from app.schemas.user import CommentedPost, UserCard, UserCommentOut, UserRatingOut
 
 
 async def toggle_follow(db: AsyncSession, follower: User, target_id: int) -> bool:
@@ -177,4 +178,48 @@ async def list_user_ratings(
         )
         for rating, dish in rows
     ]
+    return items, total
+
+
+async def list_user_comments(
+    db: AsyncSession, user_id: int, offset: int, limit: int
+) -> tuple[list[UserCommentOut], int]:
+    """某人发过的评论，带上所属帖子信息，便于跳回原帖。
+
+    评论与帖子是级联关系，帖子被删则评论一起没，所以这里不会出现孤立的评论。
+    """
+    await _ensure_user(db, user_id)
+    total = int(
+        await db.scalar(select(func.count()).select_from(Comment).where(Comment.user_id == user_id)) or 0
+    )
+    rows = (
+        await db.execute(
+            select(Comment, Post, Dish)
+            .join(Post, Comment.post_id == Post.id)
+            .join(Dish, Post.dish_id == Dish.id)
+            .where(Comment.user_id == user_id)
+            .order_by(Comment.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+    ).all()
+
+    items: list[UserCommentOut] = []
+    for comment, post, dish in rows:
+        images = post.images or []
+        text = (post.content or "").replace("\n", " ").strip()
+        items.append(
+            UserCommentOut(
+                id=comment.id,
+                content=comment.content,
+                created_at=comment.created_at,
+                post=CommentedPost(
+                    id=post.id,
+                    dish_name=dish.name,
+                    excerpt=text[:40] or None,
+                    # 帖子没配图就退回菜品封面，列表里总有个缩略图
+                    image_url=(images[0] if images else dish.image_url),
+                ),
+            )
+        )
     return items, total

@@ -63,6 +63,24 @@ class UserRatingOut(BaseModel):
     updated_at: datetime
 
 
+class CommentedPost(BaseModel):
+    """评论挂在哪个帖子上——前端据此渲染"来自某某的食评"并可点击跳转。"""
+
+    id: int
+    dish_name: str
+    excerpt: str | None = Field(default=None, description="帖子文案前 40 字")
+    image_url: str | None = Field(default=None, description="帖子首图，没有则回落菜品图")
+
+
+class UserCommentOut(BaseModel):
+    """"我的评论"列表项。"""
+
+    id: int
+    content: str
+    created_at: datetime
+    post: CommentedPost
+
+
 class UserUpdate(BaseModel):
     """本人可改的资料。用户名不可改（登录凭据），称号由系统计算。"""
 

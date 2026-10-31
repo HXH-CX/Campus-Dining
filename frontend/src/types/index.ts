@@ -123,6 +123,21 @@ export interface RatingItem {
   updated_at: string
 }
 
+/** 评论所属帖子（个人中心「我的评论」用） */
+export interface CommentedPost {
+  id: number
+  dish_name: string
+  excerpt: string | null
+  image_url: string | null
+}
+
+export interface UserCommentItem {
+  id: number
+  content: string
+  created_at: string
+  post: CommentedPost
+}
+
 export interface LoginResult {
   access_token: string
   token_type: string

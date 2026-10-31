@@ -1,4 +1,4 @@
-"""用户：个人信息、帖子、评价、关注/粉丝。"""
+"""用户：个人信息、帖子、评价、评论、关注/粉丝。"""
 
 from fastapi import APIRouter
 
@@ -7,7 +7,7 @@ from app.core.exceptions import NotFound
 from app.core.response import ApiResponse, PageData, ok, paginated
 from app.models.user import User
 from app.schemas.post import PostOut
-from app.schemas.user import UserCard, UserOut, UserRatingOut, UserUpdate
+from app.schemas.user import UserCard, UserCommentOut, UserOut, UserRatingOut, UserUpdate
 from app.services import post_service, social_service, title_service, user_service
 from app.services.user_service import to_user_out
 
@@ -52,6 +52,16 @@ async def user_posts(user_id: int, db: DbSession, paging: Paging, viewer: Option
 )
 async def user_ratings(user_id: int, db: DbSession, paging: Paging):
     items, total = await social_service.list_user_ratings(db, user_id, paging.offset, paging.limit)
+    return paginated(items, total, paging.page, paging.page_size)
+
+
+@router.get(
+    "/{user_id}/comments",
+    response_model=ApiResponse[PageData[UserCommentOut]],
+    summary="某用户发过的评论（我的评论）",
+)
+async def user_comments(user_id: int, db: DbSession, paging: Paging):
+    items, total = await social_service.list_user_comments(db, user_id, paging.offset, paging.limit)
     return paginated(items, total, paging.page, paging.page_size)
 
 
