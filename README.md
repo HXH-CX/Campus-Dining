@@ -54,6 +54,7 @@ frontend/
     components/   # PostCard / HotBoard / ErrorState / AppSkeleton …
     views/        # 前台 13 页 + admin/ 5 页
     utils/        # 错误分类、图片压缩、格式化
+  scripts/        # e2e.mjs：真浏览器跑一遍关键交互
 Research.md  PDR.md  TechDesigh.md  AGENTS.md   # 需求、设计、协作约束
 ```
 
@@ -117,15 +118,22 @@ Vite 已把 `/api` 与 `/uploads` 代理到 `127.0.0.1:8000`，前端代码里�
 
 ## 回归脚本
 
-两套脚本都是**自建自清**，跑多少遍都不会污染演示数据（需先启动后端）：
+三套脚本都是**自建自清**，跑多少遍都不会污染演示数据。
 
 ```bash
 cd backend
-python scripts/smoke_api.py     # 64 项：权限、聚合、称号、删除保护等业务逻辑
-python scripts/journey.py       # 58 项：按前端真实调用顺序验字段契约
+python scripts/smoke_api.py     # 74 项：权限、聚合、称号、删除保护等业务逻辑
+python scripts/journey.py       # 153 项：按前端真实调用顺序验字段契约
+
+cd ../frontend
+npm run e2e                     # 21 项：真浏览器走一遍关键交互
 ```
 
-分工：`smoke` 验「算得对不对」，`journey` 验「前端要的字段后端有没有」。接口一改先跑 `journey`。
+分工：
+- `smoke` 验「算得对不对」，`journey` 验「前端要的字段后端有没有」——接口一改先跑 `journey`；
+- `e2e` 验「点得对不对」：首页 / 关注流 / 搜索四页签 / 发帖结果面板 / 大图预览 / 通知 / 个人中心 / 375px 不溢出。它用 CDP 驱动本机 Chrome，**不需要装 puppeteer**，失败会截图到 `frontend/.e2e-shots/`。
+
+`e2e` 会真的发一条帖子再删掉；为保证菜品均分不被测试数据带偏，它挑的是「当前账号已评过、且分数相同」的菜，覆盖后聚合值不变。
 
 ## 设计文档
 
