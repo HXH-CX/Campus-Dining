@@ -3,14 +3,20 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.models.mixins import CreatedAtMixin
 
 if TYPE_CHECKING:
+    from app.models.post import Comment, Post
     from app.models.user import User
+
+# 通知类型：点赞、评论、关注。不要扩成枚举表，三种够用且前端要按类型给文案。
+NOTIFY_LIKE = "like"
+NOTIFY_COMMENT = "comment"
+NOTIFY_FOLLOW = "follow"
 
 
 class Follow(Base, CreatedAtMixin):
@@ -61,3 +67,42 @@ class UserAchievement(Base):
     unlocked_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     user: Mapped[User] = relationship(back_populates="achievements")
+
+
+class Notification(Base, CreatedAtMixin):
+    """站内通知：谁对你做了什么。
+
+    设计上是"事件即通知"，只在被操作发生时写一行，不做已读同步之外的任何状态。
+    同一个人对同一篇帖子重复点赞（取消再点）不重复堆积：写之前先删同键旧行，
+    相当于把时间刷新到最近一次——用户看到的是"他赞了你"，不是"他赞了你 5 次"。
+
+    帖子 / 评论被删时靠外键 CASCADE 连带清掉通知，避免点开是空的。
+    """
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        Index("idx_notifications_user", "user_id", "is_read", "created_at"),
+        Index("idx_notifications_actor", "actor_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", name="fk_notify_user", ondelete="CASCADE"), nullable=False,
+        comment="接收者",
+    )
+    actor_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", name="fk_notify_actor", ondelete="CASCADE"), nullable=False,
+        comment="触发者",
+    )
+    type: Mapped[str] = mapped_column(String(20), nullable=False, comment="like / comment / follow")
+    post_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("posts.id", name="fk_notify_post", ondelete="CASCADE"), default=None
+    )
+    comment_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("comments.id", name="fk_notify_comment", ondelete="CASCADE"), default=None
+    )
+    is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
+
+    actor: Mapped[User] = relationship(lazy="selectin", foreign_keys=[actor_id])
+    post: Mapped[Post | None] = relationship("Post", lazy="selectin")
+    comment: Mapped[Comment | None] = relationship("Comment", lazy="selectin")

@@ -22,7 +22,7 @@ from app.db.session import session_scope
 from app.models.catalog import Canteen, Dish, Merchant
 from app.models.post import Comment, Like, Post
 from app.models.rating import Rating
-from app.models.social import Follow, Want
+from app.models.social import Follow, Notification, Want
 from app.models.user import User
 
 # ---------------------------------------------------------------- 封面图
@@ -200,6 +200,7 @@ async def reset_tables() -> None:
     """按外键倒序清空业务表。TRUNCATE 会被外键挡住，这里用 DELETE。"""
     async with session_scope() as session:
         for table in (
+            "notifications",
             "likes",
             "comments",
             "posts",
@@ -330,6 +331,44 @@ async def seed() -> None:
 
         await session.flush()
 
+        # ---- 通知：由已有点赞 / 评论 / 关注派生 ----
+        # 不手写通知列表：让铃铛里的每一条都能在 likes / comments / follows 里对得上，
+        # 否则演示时会出现"通知说有 3 人赞你，帖子只有 1 个赞"这种自相矛盾的数据。
+        notify_count = await session.scalar(select(func.count()).select_from(Notification))
+        if not notify_count:
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO notifications (user_id, actor_id, type, post_id, comment_id, is_read, created_at)
+                    SELECT p.user_id, l.user_id, 'like', l.post_id, NULL, 0, l.created_at
+                    FROM likes l JOIN posts p ON p.id = l.post_id
+                    WHERE p.user_id <> l.user_id
+                    """
+                )
+            )
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO notifications (user_id, actor_id, type, post_id, comment_id, is_read, created_at)
+                    SELECT p.user_id, c.user_id, 'comment', c.post_id, c.id, 0, c.created_at
+                    FROM comments c JOIN posts p ON p.id = c.post_id
+                    WHERE p.user_id <> c.user_id
+                    """
+                )
+            )
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO notifications (user_id, actor_id, type, post_id, comment_id, is_read, created_at)
+                    SELECT f.following_id, f.follower_id, 'follow', NULL, NULL, 0, f.created_at
+                    FROM follows f
+                    """
+                )
+            )
+            # 关注通知按"早就看到了"处理，铃铛红点留给还没看的赞和评论，
+            # 演示时既能看见未读态也能看见已读态的样式差异
+            await session.execute(text("UPDATE notifications SET is_read = 1 WHERE type = 'follow'"))
+
         # ---- 重算聚合（与 service 层同一口径）----
         await session.execute(
             text(
@@ -361,6 +400,7 @@ async def seed() -> None:
             ("评分", Rating),
             ("想吃", Want),
             ("帖子", Post),
+            ("通知", Notification),
         ):
             counts[label] = await session.scalar(select(func.count()).select_from(model))
     print("种子数据完成：" + " / ".join(f"{k} {v}" for k, v in counts.items()))

@@ -11,10 +11,11 @@ from app.core.titles import title_of
 from app.models.catalog import Dish
 from app.models.post import Comment, Post
 from app.models.rating import Rating
-from app.models.social import Follow
+from app.models.social import NOTIFY_FOLLOW, Follow
 from app.models.user import User
 from app.schemas.catalog import DishBrief
 from app.schemas.user import CommentedPost, UserCard, UserCommentOut, UserRatingOut
+from app.services import notify_service
 
 
 async def toggle_follow(db: AsyncSession, follower: User, target_id: int) -> bool:
@@ -38,11 +39,14 @@ async def toggle_follow(db: AsyncSession, follower: User, target_id: int) -> boo
         await db.execute(
             update(User).where(User.id == follower.id).values(following_count=func.greatest(User.following_count - 1, 0))
         )
+        # 取关后撤回关注通知：作者点开发现自己并没有新粉丝会莫名其妙
+        await notify_service.revoke(db, user_id=target_id, actor_id=follower.id, type_=NOTIFY_FOLLOW)
         following = False
     else:
         db.add(Follow(follower_id=follower.id, following_id=target_id))
         await db.execute(update(User).where(User.id == target_id).values(follower_count=User.follower_count + 1))
         await db.execute(update(User).where(User.id == follower.id).values(following_count=User.following_count + 1))
+        await notify_service.push(db, user_id=target_id, actor_id=follower.id, type_=NOTIFY_FOLLOW)
         following = True
 
     await db.commit()

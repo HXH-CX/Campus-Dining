@@ -96,5 +96,7 @@ alembic/          # 数据库迁移脚本
 20. **后台概览（`/admin/overview`）只读、现算，不建统计表**：所有数字都是查询时聚合，"今日"按**服务器本地时间** 0 点切（不要用 UTC，管理员看的是自己的今天），近 7 天趋势在 Python 里补零（SQL 只分组，别写递归日期表）。新增指标时优先复用 `admin_service._count()`，别为了一两个数字引入缓存层或定时任务。前端柱子高度用 `max(4%, 实际比例)`，全为 0 时也要有底座。
 21. **破坏性操作必须二次确认**：删帖（本人或管理员）、删食堂/商家/菜品都要走 `ElMessageBox.confirm`（`type: 'warning'`），文案要点明「不可恢复」和「会连带删掉什么」。新增任何删除入口沿用同一写法，别做"点一下就删"的按钮——前台帖子卡片曾经就是这样。
 22. **看图用自写的 `ImageViewer`，不要引 `el-image-viewer`**：那个组件要额外带样式和 popper 依赖，而帖子列表每张卡片都会挂预览。**列表里点图 = 进帖子详情，详情页点图 = 大图**（`PostCard` 用 `detail` 区分），别把列表的主点击区域改成看图。SVG 占位图允许放大到 `min(88vw, 860px)`，位图保持原尺寸（放大只会糊）。
+23. **通知是"事件即通知"，三个不变式**：① **不给自私发**——`user_id == actor_id` 直接返回；② **同一事件只留一条**——`push()` 先删同 `(接收者, 触发者, 类型, 帖子)` 的旧行再插入，取消点赞再点只刷新时间，不堆五条"赞了你"；③ **跟着源数据消失**——`post_id` / `comment_id` 外键都带 `ON DELETE CASCADE`，删帖删评论自动清通知；点赞撤回和取关要在 service 里显式调 `notify_service.revoke()`（那不是删行，CASCADE 管不到）。前端铃铛用 `unread-count` 轮询（60s，`document.hidden` 时跳过），**不要**为了角标去拉整页通知。
+24. **`author_brief()` 放在 `app/services/dto.py`，不要留在 `post_service`**：`notify_service` 也要用它，放回 post_service 会让两个模块互相 import（已在启动时炸过一次）。同理，任何被多个 service 复用的 DTO 组装函数都往 `dto.py` 放。
 
 

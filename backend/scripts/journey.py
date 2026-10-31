@@ -339,6 +339,77 @@ def main():
     check("评论列表分页", status == 200 and body["data"]["total"] >= 1, body)
     need("评论项字段", body["data"]["items"][0], ["id", "content", "created_at", "author"])
 
+    print("== 5.2 通知（被赞 / 被评论 / 被关注）")
+    # 换一个用户来操作，才能拿到"别人给你发的通知"
+    kiki_token = call("POST", "/auth/login", {"username": "kiki", "password": "123456"})[1]["data"]["access_token"]
+    kiki_id = call("GET", "/users/me", token=kiki_token)[1]["data"]["id"]
+
+    status, body = call("GET", "/notifications")
+    check("未登录读通知被拒", status == 401, body)
+
+    status, body = call("GET", "/notifications?page=1&page_size=5", token=token)
+    check("通知分页字段", status == 200 and {"items", "total", "page", "page_size"} <= set(body["data"]), body)
+    if body["data"]["items"]:
+        need(
+            "通知项字段",
+            body["data"]["items"][0],
+            ["id", "type", "is_read", "created_at", "actor", "post", "comment_content"],
+        )
+
+    def notes_of(auth_token, actor_id, type_, pid=None):
+        """按"接收者的 token + 触发者 + 类型"筛通知，避免被种子数据里的历史通知干扰。"""
+        _s, b = call("GET", "/notifications?page=1&page_size=50", token=auth_token)
+        return [
+            n
+            for n in b["data"]["items"]
+            if n["type"] == type_ and n["actor"]["id"] == actor_id and (pid is None or (n["post"] or {}).get("id") == pid)
+        ]
+
+    call("POST", f"/posts/{post_id}/like", token=kiki_token)
+    hit = notes_of(token, kiki_id, "like", post_id)
+    check("被点赞生成通知", len(hit) == 1, hit)
+    check("通知带原帖摘要", bool(hit and hit[0]["post"] and hit[0]["post"]["dish_name"]), hit)
+    check("新通知是未读", bool(hit) and hit[0]["is_read"] is False, hit)
+
+    call("POST", f"/posts/{post_id}/like", token=kiki_token)
+    check("取消点赞撤销通知", notes_of(token, kiki_id, "like", post_id) == [], "仍存在")
+
+    status, body = call("POST", f"/posts/{post_id}/comments", {"content": "通知测试评论"}, token=kiki_token)
+    note_comment_id = body["data"]["id"]
+    hit = notes_of(token, kiki_id, "comment", post_id)
+    check("被评论生成通知且带原文", len(hit) == 1 and hit[0]["comment_content"] == "通知测试评论", hit)
+    call("DELETE", f"/posts/{post_id}/comments/{note_comment_id}", token=kiki_token)
+    check("删评论后通知级联消失", notes_of(token, kiki_id, "comment", post_id) == [], "仍存在")
+
+    # 自己赞自己不发通知：自己的操作不该出现在自己的铃铛里
+    call("POST", f"/posts/{post_id}/like", token=token)
+    check("自己点赞不产生通知", notes_of(token, me["id"], "like", post_id) == [], "多了一条")
+    call("POST", f"/posts/{post_id}/like", token=token)  # 取消，回到初始状态
+
+    # 关注类通知没有 post，点开应该跳对方主页
+    call("POST", f"/users/{kiki_id}/follow", token=token)
+    check("被关注生成通知", len(notes_of(kiki_token, me["id"], "follow")) == 1, "没有关注通知")
+
+    status, body = call("GET", "/notifications?unread_only=true&page_size=50", token=kiki_token)
+    check("只看未读", status == 200 and all(n["is_read"] is False for n in body["data"]["items"]), body)
+    unread_items = body["data"]["items"]
+    check("关注后对方有未读", len(unread_items) >= 1, unread_items)
+
+    if unread_items:
+        nid = unread_items[0]["id"]
+        status, body = call("POST", f"/notifications/{nid}/read", token=token)
+        check("不能标记别人的通知", status == 404, body)
+        status, body = call("POST", f"/notifications/{nid}/read", token=kiki_token)
+        check("单条已读返回结构", status == 200 and {"updated", "unread"} <= set(body["data"]), body)
+
+    status, body = call("POST", "/notifications/read", token=kiki_token)
+    check("全部已读清零", status == 200 and body["data"]["unread"] == 0, body)
+    status, body = call("GET", "/notifications/unread-count", token=kiki_token)
+    check("未读数归零", status == 200 and body["data"]["count"] == 0, body)
+
+    call("POST", f"/users/{kiki_id}/follow", token=token)  # 取关，撤销关注通知，收尾
+    check("取关撤销通知", notes_of(kiki_token, me["id"], "follow") == [], "仍存在")
+
     print("== 5.1 编辑帖子（只改文案与配图）")
     new_text = "改过的文案：还行，就是有点咸"
     status, body = call("PUT", f"/posts/{post_id}", {"content": new_text}, token=token)

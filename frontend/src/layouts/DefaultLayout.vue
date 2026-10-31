@@ -1,14 +1,24 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useNotifyStore } from '@/stores/notify'
 import { ElMessage } from '@/utils/feedback'
 
 const auth = useAuthStore()
+const notify = useNotifyStore()
 const router = useRouter()
 
 const initial = computed(() => auth.user?.nickname?.slice(0, 1) || '食')
 const quickKeyword = ref('')
+
+// 登录态决定要不要轮询未读；退出登录时一并清掉角标，避免换了账号还挂着别人的红点
+watch(
+  () => auth.isLoggedIn,
+  (loggedIn) => (loggedIn ? notify.start() : notify.stop()),
+  { immediate: true },
+)
+onBeforeUnmount(() => notify.stop())
 
 function goSearch(): void {
   const kw = quickKeyword.value.trim()
@@ -63,6 +73,10 @@ function handleCommand(command: string): void {
         <div class="actions">
           <template v-if="auth.isLoggedIn">
             <el-button type="primary" round @click="router.push({ name: 'create' })">写食评</el-button>
+            <router-link :to="{ name: 'notifications' }" class="bell" :title="notify.unread ? `${notify.unread} 条未读` : '通知'">
+              <span class="bell-icon">🔔</span>
+              <span v-if="notify.unread" class="bell-badge">{{ notify.unread > 99 ? '99+' : notify.unread }}</span>
+            </router-link>
             <el-dropdown trigger="click" @command="handleCommand">
               <div class="me">
                 <span class="avatar">{{ initial }}</span>
@@ -208,6 +222,43 @@ function handleCommand(command: string): void {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.bell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.bell:hover {
+  background: var(--brand-soft);
+}
+
+.bell-icon {
+  font-size: 17px;
+  line-height: 1;
+}
+
+/* 角标贴右上角，用 min-width 撑成胶囊，两位数（如 20）不会变成椭圆 */
+.bell-badge {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ff3b30;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 2px #fff;
 }
 
 main {

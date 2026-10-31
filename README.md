@@ -15,6 +15,7 @@
 - **今天吃什么**：一键随机抽一道菜，不满意「换一个」，满意直接进菜品详情；也可以只在「想吃」清单里抽
 - **想吃清单**：菜品页「想吃」攒一份候选池，个人中心可查看和移除；发帖打分后自动划掉（吃过就不算想吃）
 - 点赞、评论、关注（单向关注，双向自动标记「互关」）
+- **通知中心**：被赞 / 被评论 / 被关注都会落一条通知，顶栏铃铛显示未读数（60s 轮询，切到后台不轮）；点一条就标已读并跳到原帖或对方主页；取消点赞、取关、删评论、删帖都会把对应通知一起收回
 - 个人主页：称号、隐藏成就、帖子 / 评价 / 评论 / 关注 / 粉丝
 - 同一道菜重复打分**覆盖**原评分，不新增评价数——评分代表「我现在的看法」
 
@@ -39,9 +40,9 @@
 ```
 backend/
   app/
-    api/v1/       # auth / users / catalog / posts / admin / uploads
+    api/v1/       # auth / users / catalog / posts / notifications / admin / uploads
     core/         # 配置、安全、统一响应、错误码、称号映射
-    models/       # 11 张表，按域拆分
+    models/       # 12 张表，按域拆分
     schemas/      # Pydantic 请求/响应
     services/     # 业务逻辑（发帖、热度、称号、聚合）
     utils/        # 图片校验（MVP 为 Mock，预留 AI 接口）
@@ -51,7 +52,7 @@ frontend/
   src/
     api/          # 按域拆分的请求封装，统一解包 {code,message,data}
     components/   # PostCard / HotBoard / ErrorState / AppSkeleton …
-    views/        # 前台 12 页 + admin/ 4 页
+    views/        # 前台 13 页 + admin/ 5 页
     utils/        # 错误分类、图片压缩、格式化
 Research.md  PDR.md  TechDesigh.md  AGENTS.md   # 需求、设计、协作约束
 ```

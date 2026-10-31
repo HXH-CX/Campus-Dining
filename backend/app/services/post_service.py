@@ -12,14 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
 from app.core.exceptions import BadRequest, Forbidden, NotFound, Unauthorized
-from app.core.titles import title_of
 from app.models.catalog import Canteen, Dish, Merchant
 from app.models.post import Comment, Like, Post
 from app.models.rating import Rating
-from app.models.social import Follow, Want
+from app.models.social import NOTIFY_COMMENT, NOTIFY_LIKE, Follow, Want
 from app.models.user import User
 from app.schemas.post import (
-    AuthorBrief,
     CommentOut,
     DishInPost,
     LikeResult,
@@ -28,6 +26,8 @@ from app.schemas.post import (
     PostUpdate,
     PostOut,
 )
+from app.services import notify_service
+from app.services.dto import author_brief
 
 SORT_LATEST = "latest"
 SORT_HOT = "hot"
@@ -62,18 +62,6 @@ def _base_query():
     )
 
 
-def _author_brief(user: User) -> AuthorBrief:
-    title = title_of(user.title_level)
-    return AuthorBrief(
-        id=user.id,
-        nickname=user.nickname,
-        avatar_url=user.avatar_url,
-        title_level=user.title_level,
-        title_name=title["name"],
-        title_emoji=title["emoji"],
-    )
-
-
 def _to_post_out(row, is_liked: bool) -> PostOut:
     post, user, dish, merchant, canteen, score = row
     return PostOut(
@@ -83,7 +71,7 @@ def _to_post_out(row, is_liked: bool) -> PostOut:
         like_count=post.like_count,
         comment_count=post.comment_count,
         created_at=post.created_at,
-        author=_author_brief(user),
+        author=author_brief(user),
         dish=DishInPost(
             id=dish.id,
             name=dish.name,
@@ -273,6 +261,8 @@ async def toggle_like(db: AsyncSession, user: User, post_id: int) -> LikeResult:
             .where(Post.id == post_id)
             .values(like_count=func.greatest(Post.like_count - 1, 0))
         )
+        # 取消点赞就把那条"赞了你"一起收回，别让作者收到一条假消息
+        await notify_service.revoke(db, user_id=post.user_id, actor_id=user.id, type_=NOTIFY_LIKE, post_id=post_id)
         liked = False
     else:
         try:
@@ -283,6 +273,9 @@ async def toggle_like(db: AsyncSession, user: User, post_id: int) -> LikeResult:
             # 并发重复点赞：唯一键已经挡住了，按"已点赞"处理即可
             return LikeResult(liked=True, like_count=await _read_like_count(db, post_id))
         await db.execute(update(Post).where(Post.id == post_id).values(like_count=Post.like_count + 1))
+        await notify_service.push(
+            db, user_id=post.user_id, actor_id=user.id, type_=NOTIFY_LIKE, post_id=post_id
+        )
         liked = True
 
     await db.commit()
@@ -310,21 +303,27 @@ async def list_comments(db: AsyncSession, post_id: int, offset: int, limit: int)
         )
     ).all()
     items = [
-        CommentOut(id=c.id, content=c.content, created_at=c.created_at, author=_author_brief(u))
+        CommentOut(id=c.id, content=c.content, created_at=c.created_at, author=author_brief(u))
         for c, u in rows
     ]
     return items, total
 
 
 async def add_comment(db: AsyncSession, user: User, post_id: int, content: str) -> CommentOut:
-    if await db.get(Post, post_id) is None:
+    post = await db.get(Post, post_id)
+    if post is None:
         raise NotFound("帖子不存在")
     comment = Comment(post_id=post_id, user_id=user.id, content=content)
     db.add(comment)
     await db.execute(update(Post).where(Post.id == post_id).values(comment_count=Post.comment_count + 1))
+    # 通知要带 comment_id，先把评论 id 落下来再写通知
+    await db.flush()
+    await notify_service.push(
+        db, user_id=post.user_id, actor_id=user.id, type_=NOTIFY_COMMENT, post_id=post_id, comment_id=comment.id
+    )
     await db.commit()
     await db.refresh(comment)
-    return CommentOut(id=comment.id, content=comment.content, created_at=comment.created_at, author=_author_brief(user))
+    return CommentOut(id=comment.id, content=comment.content, created_at=comment.created_at, author=author_brief(user))
 
 
 async def delete_comment(db: AsyncSession, user: User, post_id: int, comment_id: int) -> int:

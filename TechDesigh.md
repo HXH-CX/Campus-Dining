@@ -91,6 +91,14 @@
 | GET | `/users/{id}/following` | 关注列表（带 `is_mutual`） |
 | POST | `/users/{id}/follow` 🔒 | 关注/取消关注（幂等切换），维护两侧计数 |
 
+### 3.3.5.1 通知模块（🔒 全部需登录）
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/notifications?page=&page_size=&unread_only=` | 我的通知，按时间倒序；每项含 `{id, type, is_read, created_at, actor, post, comment_content}`，`post` 带 `{id, dish_name, content, image_url}` 供前端摘要展示 |
+| GET | `/notifications/unread-count` | 未读数，铃铛角标专用（比拉列表便宜） |
+| POST | `/notifications/read` | 全部标为已读，返回 `{updated, unread: 0}` |
+| POST | `/notifications/{id}/read` | 单条标为已读；别人的通知按 404 处理（不暴露 id 是否存在） |
+
 ### 3.3.6 管理后台 CRUD（👑）
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -243,6 +251,25 @@ CREATE TABLE wants (
     KEY idx_wants_dish (dish_id),
     CONSTRAINT fk_want_user FOREIGN KEY (user_id) REFERENCES users(id),
     CONSTRAINT fk_want_dish FOREIGN KEY (dish_id) REFERENCES dishes(id)
+);
+
+-- 站内通知（被赞 / 被评论 / 被关注）
+CREATE TABLE notifications (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL COMMENT '接收者',
+    actor_id BIGINT NOT NULL COMMENT '触发者',
+    type VARCHAR(20) NOT NULL COMMENT 'like / comment / follow',
+    post_id BIGINT NULL,
+    comment_id BIGINT NULL,
+    is_read TINYINT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- 覆盖"某人的铃铛按时间倒序 + 未读筛选"这一个主要查询
+    KEY idx_notifications_user (user_id, is_read, created_at),
+    KEY idx_notifications_actor (actor_id),
+    CONSTRAINT fk_notify_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_notify_actor FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_notify_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    CONSTRAINT fk_notify_comment FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE
 );
 ```
 

@@ -188,3 +188,23 @@ export interface UploadResult {
   url: string
   size: number
 }
+
+/** 站内通知（GET /notifications） */
+export type NotificationType = 'like' | 'comment' | 'follow'
+
+export interface NotificationPostBrief {
+  id: number
+  dish_name: string
+  content: string | null
+  image_url: string | null
+}
+
+export interface NotificationItem {
+  id: number
+  type: NotificationType
+  is_read: boolean
+  created_at: string
+  actor: AuthorBrief
+  post: NotificationPostBrief | null
+  comment_content: string | null
+}
