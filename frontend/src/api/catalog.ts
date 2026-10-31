@@ -1,5 +1,5 @@
 import { get } from './request'
-import type { Canteen, Dish, Merchant, PageData } from '@/types'
+import type { Canteen, Dish, Merchant, PageData, RandomDishResult } from '@/types'
 
 export function fetchCanteens() {
   return get<Canteen[]>('/canteens')
@@ -24,6 +24,11 @@ export function fetchDish(dishId: number) {
 /** 高分榜：够分且够人评的菜品，按均分倒序 */
 export function fetchTopDishes(params: { min_rating?: number; min_count?: number; limit?: number } = {}) {
   return get<Dish[]>('/dishes/top', { ...params })
+}
+
+/** 随机抽一道菜（今天吃什么）；exclude_id 用于「换一个」避开刚抽到的那道 */
+export function fetchRandomDish(params: { exclude_id?: number; min_rating?: number; min_count?: number } = {}) {
+  return get<RandomDishResult>('/dishes/random', { ...params })
 }
 
 /** 按菜名或商家名模糊搜索；keyword 为空则返回全部上架菜品 */

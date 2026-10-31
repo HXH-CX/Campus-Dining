@@ -4,7 +4,7 @@ from fastapi import APIRouter, Query
 
 from app.api.deps import DbSession, Paging
 from app.core.response import ApiResponse, PageData, ok, paginated
-from app.schemas.catalog import CanteenOut, DishOut, MerchantOut, RatingOut
+from app.schemas.catalog import CanteenOut, DishOut, MerchantOut, RandomDishOut, RatingOut
 from app.services import catalog_service
 
 router = APIRouter(tags=["食堂与菜品"])
@@ -62,6 +62,21 @@ async def top_dishes(
     limit: int = Query(6, ge=1, le=20),
 ):
     return ok(await catalog_service.top_dishes(db, min_rating, min_count, limit))
+
+
+# 同样要抢在 /dishes/{dish_id} 前面注册
+@router.get(
+    "/dishes/random",
+    response_model=ApiResponse[RandomDishOut],
+    summary="随机抽一道菜（今天吃什么）",
+)
+async def random_dish(
+    db: DbSession,
+    min_rating: float = Query(4.0, ge=0, le=5, description="高分池的均分门槛"),
+    min_count: int = Query(2, ge=1, le=100, description="高分池的最少评价人数"),
+    exclude_id: int | None = Query(None, ge=1, description="想避开的菜品 id（「换一个」时传当前这道）"),
+):
+    return ok(await catalog_service.random_dish(db, min_rating=min_rating, min_count=min_count, exclude_id=exclude_id))
 
 
 @router.get("/dishes/{dish_id}", response_model=ApiResponse[DishOut], summary="菜品详情")

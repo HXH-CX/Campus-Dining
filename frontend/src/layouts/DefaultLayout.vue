@@ -132,6 +132,8 @@ function handleCommand(command: string): void {
   font-weight: 800;
   font-size: 17px;
   letter-spacing: 0.5px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .brand-mark {
@@ -149,6 +151,7 @@ function handleCommand(command: string): void {
   border-radius: 999px;
   color: var(--text-2);
   font-weight: 500;
+  white-space: nowrap;
   transition: background 0.15s, color 0.15s;
 }
 
@@ -217,5 +220,43 @@ main {
   text-align: center;
   color: var(--text-3);
   font-size: 12px;
+}
+
+/*
+ * 窄屏：品牌和导航挤在一行会把「食堂导航」挤成竖排（每个字一行）。
+ * 这里让导航整体换到第二行并允许横向滚动，比缩字号更耐看。
+ */
+@media (max-width: 560px) {
+  .topbar-inner {
+    height: auto;
+    padding: 8px 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .nav {
+    order: 3;
+    flex: 1 0 100%;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-link {
+    padding: 5px 10px;
+    font-size: 13px;
+  }
+
+  .brand-text {
+    font-size: 15px;
+  }
+
+  .actions {
+    margin-left: auto;
+  }
 }
 </style>

@@ -35,6 +35,14 @@ class DishOut(BaseModel):
     is_available: bool
 
 
+class RandomDishOut(BaseModel):
+    """「今天吃什么」的抽取结果。"""
+
+    dish: DishOut
+    pool_size: int = Field(description="本次抽取的候选池大小，1 表示没得换")
+    from_top: bool = Field(description="是否来自高分池（够分且够人评）")
+
+
 class DishBrief(BaseModel):
     """嵌在帖子里的菜品信息。"""
 

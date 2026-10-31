@@ -5,6 +5,7 @@ import { fetchFeed } from '@/api/post'
 import PostCard from '@/components/PostCard.vue'
 import HotBoard from '@/components/HotBoard.vue'
 import TopDishBoard from '@/components/TopDishBoard.vue'
+import RandomDishDialog from '@/components/RandomDishDialog.vue'
 import AppSkeleton from '@/components/AppSkeleton.vue'
 import ErrorState from '@/components/ErrorState.vue'
 import type { Post } from '@/types'
@@ -19,6 +20,7 @@ const pageSize = 10
 const loading = ref(false)
 const error = ref<unknown>(null)
 const hotRef = ref<{ reload: () => Promise<void> } | null>(null)
+const randomOpen = ref(false)
 
 /** page 只在请求成功后才推进，避免失败一次就永久错位 */
 async function fetchPage(target: number, append: boolean): Promise<void> {
@@ -74,9 +76,14 @@ onMounted(() => void fetchPage(1, false))
           <h1>今天吃什么？</h1>
           <p class="muted">看看同学们最近在食堂发现了什么好东西</p>
         </div>
-        <el-button type="primary" round size="large" @click="router.push({ name: 'create' })">
-          发一条食评
-        </el-button>
+        <div class="hero-acts">
+          <el-button round size="large" @click="randomOpen = true">
+            <span class="dice">🎲</span>帮我选
+          </el-button>
+          <el-button type="primary" round size="large" @click="router.push({ name: 'create' })">
+            发一条食评
+          </el-button>
+        </div>
       </div>
 
       <TopDishBoard />
@@ -114,6 +121,8 @@ onMounted(() => void fetchPage(1, false))
     </div>
 
     <HotBoard ref="hotRef" />
+
+    <RandomDishDialog v-model="randomOpen" />
   </div>
 </template>
 
@@ -142,6 +151,52 @@ onMounted(() => void fetchPage(1, false))
 .hero p {
   margin: 0;
   font-size: 13px;
+}
+
+.hero-acts {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* Element Plus 默认给相邻按钮加 margin-left，这里已经用 gap 了，去掉避免间距翻倍 */
+.hero-acts :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+/* 只抖骰子图标，不抖整颗按钮：整颗转起来像误触 */
+.dice {
+  display: inline-block;
+  margin-right: 5px;
+  animation: nudge 4.2s ease-in-out infinite;
+}
+
+@keyframes nudge {
+  0%,
+  88%,
+  100% {
+    transform: rotate(0deg);
+  }
+  90% {
+    transform: rotate(-6deg);
+  }
+  93% {
+    transform: rotate(6deg);
+  }
+  96% {
+    transform: rotate(-3deg);
+  }
+}
+
+@media (max-width: 620px) {
+  .hero {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero-acts :deep(.el-button) {
+    flex: 1;
+  }
 }
 
 .tabs {

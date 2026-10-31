@@ -82,6 +82,15 @@ export interface DishBrief {
   rating_count: number
 }
 
+/** 「今天吃什么」的抽取结果 */
+export interface RandomDishResult {
+  dish: Dish
+  /** 本次候选池大小，1 表示没得换 */
+  pool_size: number
+  /** 是否来自高分池（够分且够人评） */
+  from_top: boolean
+}
+
 export interface AuthorBrief {
   id: number
   nickname: string

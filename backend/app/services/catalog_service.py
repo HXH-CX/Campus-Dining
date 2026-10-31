@@ -13,7 +13,7 @@ from app.core.exceptions import NotFound
 from app.models.catalog import Canteen, Dish, Merchant
 from app.models.rating import Rating
 from app.models.user import User
-from app.schemas.catalog import CanteenOut, DishOut, MerchantOut, RatingOut
+from app.schemas.catalog import CanteenOut, DishOut, MerchantOut, RandomDishOut, RatingOut
 
 # 加权综合评分：SUM(avg_rating * rating_count) / SUM(rating_count)，只算上架菜品
 _OVERALL = func.coalesce(
@@ -164,6 +164,61 @@ async def top_dishes(
     )
     rows = (await db.execute(stmt)).all()
     return [_to_dish_out(dish, merchant_name, canteen_name) for dish, merchant_name, canteen_name in rows]
+
+
+async def random_dish(
+    db: AsyncSession,
+    *,
+    min_rating: float = 4.0,
+    min_count: int = 2,
+    exclude_id: int | None = None,
+) -> RandomDishOut:
+    """「今天吃什么」：随机抽一道菜。
+
+    先在高分池里抽（够分 + 够人评），池子空时退回全部在售菜品。
+    为什么不只在高分池里抽：数据少的时候会直接抽不出来，
+    对"选择困难"的人来说，抽不出来比抽到一道没人评过的菜更让人放弃。
+
+    exclude_id 用来支撑「换一个」：刚抽到的那道不再进候选，
+    除非池子里只剩它（否则会 404，还不如把同一道菜再端上来）。
+    """
+    qualified = [
+        Dish.is_available.is_(True),
+        Dish.rating_count >= min_count,
+        Dish.avg_rating >= min_rating,
+    ]
+    available = [Dish.is_available.is_(True)]
+
+    attempts: list[tuple[list, bool]] = []
+    if exclude_id is not None:
+        attempts.append((qualified + [Dish.id != exclude_id], True))
+        attempts.append((available + [Dish.id != exclude_id], False))
+    attempts.append((qualified, True))
+    attempts.append((available, False))
+
+    for conditions, from_top in attempts:
+        stmt = (
+            select(Dish, Merchant.name, Canteen.name)
+            .join(Merchant, Dish.merchant_id == Merchant.id)
+            .join(Canteen, Merchant.canteen_id == Canteen.id)
+            .where(*conditions)
+            .options(noload(Dish.merchant))
+        )
+        pool = int(await db.scalar(stmt.with_only_columns(func.count()).order_by(None)) or 0)
+        if not pool:
+            continue
+        # 小表上 ORDER BY RAND() 足够快；真到几万行再改成"先 count 再随机 offset"
+        row = (await db.execute(stmt.order_by(func.rand()).limit(1))).first()
+        if row is None:
+            continue
+        dish, merchant_name, canteen_name = row
+        return RandomDishOut(
+            dish=_to_dish_out(dish, merchant_name, canteen_name),
+            pool_size=pool,
+            from_top=from_top,
+        )
+
+    raise NotFound("还没有可供选择的菜品")
 
 
 async def get_dish(db: AsyncSession, dish_id: int) -> DishOut:

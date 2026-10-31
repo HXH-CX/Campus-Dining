@@ -132,6 +132,39 @@ def main():
     status, body = call("GET", "/dishes/top?min_count=99")
     check("门槛过高返回空数组而不是报错", status == 200 and body["data"] == [], body)
 
+    print("== 1.2 随机一顿（今天吃什么）")
+    status, body = call("GET", "/dishes/random")
+    check("随机抽取 200", status == 200, body)
+    need("随机结果字段", body["data"], ["dish", "pool_size", "from_top"])
+    pick = body["data"]
+    need(
+        "随机菜品字段（弹窗要用）",
+        pick["dish"],
+        ["id", "name", "image_url", "merchant_name", "canteen_name", "avg_rating", "rating_count"],
+    )
+    check(
+        "默认从高分池里抽",
+        pick["from_top"] is True and pick["pool_size"] >= 1 and pick["dish"]["rating_count"] >= 2,
+        pick,
+    )
+
+    status, body = call("GET", f"/dishes/random?exclude_id={pick['dish']['id']}")
+    check(
+        "「换一个」不会原地重复",
+        status == 200 and body["data"]["dish"]["id"] != pick["dish"]["id"],
+        body["data"],
+    )
+
+    status, body = call("GET", "/dishes/random?min_count=99")
+    check(
+        "高分池空时回退到全部在售菜品",
+        status == 200 and body["data"]["from_top"] is False and body["data"]["pool_size"] >= 2,
+        body,
+    )
+
+    status, body = call("GET", "/dishes/random?exclude_id=0")
+    check("非法 exclude_id 被拒", status == 400, body)
+
     print("== 2. 登录")
     status, body = call("POST", "/auth/login", {"username": "xiaoming", "password": "123456"})
     check("学生登录", status == 200, body)
