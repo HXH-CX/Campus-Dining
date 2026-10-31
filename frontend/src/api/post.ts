@@ -49,6 +49,10 @@ export function addComment(postId: number, content: string) {
   return post<Comment>(`/posts/${postId}/comments`, { content })
 }
 
+export function deleteComment(postId: number, commentId: number) {
+  return del<{ comment_count: number }>(`/posts/${postId}/comments/${commentId}`)
+}
+
 export function fetchMerchantPosts(merchantId: number, page = 1, pageSize = 10) {
   return get<PageData<Post>>(`/merchants/${merchantId}/posts`, { page, page_size: pageSize })
 }

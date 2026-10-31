@@ -6,7 +6,15 @@ from fastapi import APIRouter, Query
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser, Paging
 from app.core.response import ApiResponse, PageData, ok, paginated
-from app.schemas.post import CommentCreate, CommentOut, LikeResult, PostCreate, PostOut, PostUpdate
+from app.schemas.post import (
+    CommentCount,
+    CommentCreate,
+    CommentOut,
+    LikeResult,
+    PostCreate,
+    PostOut,
+    PostUpdate,
+)
 from app.services import catalog_service, hot_service, post_service, title_service
 
 router = APIRouter(tags=["社区"])
@@ -84,6 +92,17 @@ async def add_comment(post_id: int, payload: CommentCreate, db: DbSession, curre
     comment = await post_service.add_comment(db, current, post_id, payload.content)
     hot_service.invalidate()  # 评论权重是点赞的 2 倍，榜单会变
     return ok(comment)
+
+
+@router.delete(
+    "/posts/{post_id}/comments/{comment_id}",
+    response_model=ApiResponse[CommentCount],
+    summary="删除评论（本人或管理员）",
+)
+async def delete_comment(post_id: int, comment_id: int, db: DbSession, current: CurrentUser):
+    count = await post_service.delete_comment(db, current, post_id, comment_id)
+    hot_service.invalidate()  # 评论权重是点赞的 2 倍，少一条榜单会变
+    return ok(CommentCount(comment_count=count), "已删除")
 
 
 # ---------------------------------------------------------------- 按商家 / 菜品查帖子

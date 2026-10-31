@@ -127,3 +127,9 @@ class CommentOut(BaseModel):
 class LikeResult(BaseModel):
     liked: bool
     like_count: int
+
+
+class CommentCount(BaseModel):
+    """删评论后返回该帖最新的评论数，前端据此就地更新卡片。"""
+
+    comment_count: int

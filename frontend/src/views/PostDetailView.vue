@@ -8,7 +8,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from '@/utils/feedback'
-import { addComment, fetchComments, fetchPost } from '@/api/post'
+import { addComment, deleteComment, fetchComments, fetchPost } from '@/api/post'
 import { isNotFound } from '@/api/request'
 import { useAuthStore } from '@/stores/auth'
 import { timeAgo } from '@/utils/format'
@@ -31,6 +31,7 @@ const error = ref<unknown>(null)
 const loadingMore = ref(false)
 const draft = ref('')
 const sending = ref(false)
+const removing = ref<number | null>(null)
 const commentBox = ref<HTMLElement | null>(null)
 
 const postId = computed(() => Number(props.id))
@@ -90,6 +91,27 @@ async function submit(): Promise<void> {
     // 拦截器已提示，保留草稿
   } finally {
     sending.value = false
+  }
+}
+
+/** 本人可删自己的，管理员可删任意 */
+function canRemove(comment: Comment): boolean {
+  return auth.user?.id === comment.author.id || auth.isAdmin
+}
+
+async function removeComment(comment: Comment): Promise<void> {
+  if (removing.value) return
+  removing.value = comment.id
+  try {
+    const result = await deleteComment(postId.value, comment.id)
+    comments.value = comments.value.filter((item) => item.id !== comment.id)
+    commentTotal.value = result.comment_count
+    if (post.value) post.value.comment_count = result.comment_count
+    ElMessage.success('评论已删除')
+  } catch {
+    // 拦截器已提示
+  } finally {
+    removing.value = null
   }
 }
 
@@ -192,6 +214,14 @@ watch(postId, loadPost)
                 </router-link>
                 <span class="badge">{{ comment.author.title_emoji }} {{ comment.author.title_name }}</span>
                 <span class="tiny time">{{ timeAgo(comment.created_at) }}</span>
+                <button
+                  v-if="canRemove(comment)"
+                  class="del"
+                  :disabled="removing === comment.id"
+                  @click="removeComment(comment)"
+                >
+                  删除
+                </button>
               </div>
               <p>{{ comment.content }}</p>
             </div>
@@ -297,6 +327,25 @@ watch(postId, loadPost)
 
 .time {
   margin-left: auto;
+}
+
+.del {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0 2px;
+  font-family: inherit;
+}
+
+.del:hover {
+  color: #e8452c;
+}
+
+.del:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 p {

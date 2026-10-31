@@ -88,5 +88,6 @@ alembic/          # 数据库迁移脚本
 12. **列表页四条状态分支缺一不可**：`loading`（用 `AppSkeleton`）/ `error`（`ErrorState`）/ `empty`（文案）/ `content`。骨架不要用 `el-skeleton` 的文字条，形状对不上会跳版。
 13. **图片必须走 `uploadImage()` 上传**（内部先 `compressImage()` 再发 multipart）：它会按 `maxEdge` 缩放并转 WebP，异常时自动退回原图。**不要**直接 `xhr`/`fetch` 传原始 `File`。压缩后文件名后缀会跟着实际编码变（`.webp`），因为后端校验扩展名与文件头魔数一致。
 14. **帖子编辑只改 `content` / `images`**：`PUT /posts/{id}` 不接受 `score` / `dish_id`。改评分会连带影响菜品均分，那是"重新表态"，必须走发帖的 upsert。请求体用 `model_fields_set` 区分"没传"与"传 null"——没传就保持原样，传 null 才清空。
+15. **删评论要回减 `comment_count`**：权限是"本人或管理员"，评论不属于该帖按 404（不暴露别处的评论 id）。回减用 `CASE WHEN comment_count > 0`——该列是 unsigned，直接 `-1` 在计数为 0 时会报 out of range。删完要 `hot_service.invalidate()`，因为热榜权重是评论×2。
 
 

@@ -73,6 +73,7 @@
 | POST | `/posts/{id}/like` 🔒 | 点赞/取消点赞（幂等切换），同步维护 `like_count` |
 | GET | `/posts/{id}/comments` | 评论列表（分页） |
 | POST | `/posts/{id}/comments` 🔒 | 发表评论，同步维护 `comment_count` |
+| DELETE | `/posts/{id}/comments/{cid}` 🔒 | 删除评论：本人或管理员；同步回减 `comment_count`，返回 `{comment_count}`。评论不属于该帖时按 404 处理 |
 
 ### 3.3.5 用户模块
 | 方法 | 路径 | 说明 |

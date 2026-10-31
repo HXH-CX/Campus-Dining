@@ -320,6 +320,25 @@ def main():
     status, body = call("GET", f"/posts/{post_id}")
     check("评论数已累加", body["data"]["comment_count"] == 1, body)
 
+    print("== 删评论")
+    status, body = call("POST", f"/posts/{post_id}/comments", {"content": "这条会被删掉"}, token=student)
+    comment_id = body["data"]["id"]
+    status, body = call("DELETE", f"/posts/{post_id}/comments/{comment_id}", token=other)
+    check("删别人的评论 403", status == 403, body)
+    status, body = call("DELETE", f"/posts/{post_id + 1}/comments/{comment_id}", token=student)
+    check("评论与帖子不匹配 404", status == 404, body)
+    status, body = call("DELETE", f"/posts/{post_id}/comments/{comment_id}", token=student)
+    check("删自己的评论并回传新计数", status == 200 and body["data"] == {"comment_count": 1}, body)
+    status, body = call("GET", f"/posts/{post_id}")
+    check("评论数已回减", body["data"]["comment_count"] == 1, body)
+    # 管理员兜底：可以删别人的评论
+    status, body = call("GET", f"/posts/{post_id}/comments")
+    left_id = body["data"]["items"][0]["id"]
+    status, body = call("DELETE", f"/posts/{post_id}/comments/{left_id}", token=admin)
+    check("管理员删任意评论", status == 200 and body["data"]["comment_count"] == 0, body)
+    status, body = call("DELETE", f"/posts/{post_id}/comments/{left_id}", token=admin)
+    check("重复删除 404", status == 404, body)
+
     status, body = call("GET", "/posts/feed?sort=latest&page=1&page_size=3")
     check("feed latest 分页", status == 200 and body["data"]["page_size"] == 3, body)
     status, body = call("GET", "/posts/feed?sort=hot")

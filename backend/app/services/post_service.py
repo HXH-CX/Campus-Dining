@@ -6,7 +6,7 @@
 - 帖子的展示分数 = 作者对该菜的**当前**评分，所以可能随作者再次发帖而变化。
 """
 
-from sqlalchemy import and_, func, select, text, update
+from sqlalchemy import and_, case, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
@@ -291,6 +291,32 @@ async def add_comment(db: AsyncSession, user: User, post_id: int, content: str) 
     await db.commit()
     await db.refresh(comment)
     return CommentOut(id=comment.id, content=comment.content, created_at=comment.created_at, author=_author_brief(user))
+
+
+async def delete_comment(db: AsyncSession, user: User, post_id: int, comment_id: int) -> int:
+    """删除评论，返回该帖最新的评论数。
+
+    权限：本人删自己的，管理员可删任意（应急兜底，与删帖同一套思路）。
+    comment_count 跟着减：热榜权重是评论×2，计数不准会直接影响排序。
+    """
+    comment = await db.get(Comment, comment_id)
+    # 评论不属于这篇帖子时也按不存在处理，避免有人顺着 id 猜别处的评论
+    if comment is None or comment.post_id != post_id:
+        raise NotFound("评论不存在")
+    if comment.user_id != user.id and not user.is_admin:
+        raise Forbidden("只能删除自己的评论")
+
+    await db.delete(comment)
+    await db.execute(
+        update(Post)
+        .where(Post.id == post_id)
+        # 用 CASE 兜底：comment_count 是 unsigned，直接 -1 在计数为 0 时会报 out of range
+        .values(comment_count=case((Post.comment_count > 0, Post.comment_count - 1), else_=0))
+    )
+    await db.commit()
+
+    remaining = await db.scalar(select(Post.comment_count).where(Post.id == post_id))
+    return int(remaining or 0)
 
 
 async def list_hot(db: AsyncSession, limit: int = HOT_LIMIT, viewer: User | None = None) -> list[PostOut]:

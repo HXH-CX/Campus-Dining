@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from '@/utils/feedback'
-import { addComment, fetchComments } from '@/api/post'
+import { addComment, deleteComment, fetchComments } from '@/api/post'
 import AppSkeleton from '@/components/AppSkeleton.vue'
 import { useAuthStore } from '@/stores/auth'
 import { timeAgo } from '@/utils/format'
@@ -22,6 +22,28 @@ const total = ref(0)
 const loading = ref(false)
 const draft = ref('')
 const sending = ref(false)
+const removing = ref<number | null>(null)
+
+/** 本人可删自己的，管理员可删任意（与删帖的权限口径一致） */
+function canRemove(comment: Comment): boolean {
+  return auth.user?.id === comment.author.id || auth.isAdmin
+}
+
+async function remove(comment: Comment): Promise<void> {
+  if (removing.value) return
+  removing.value = comment.id
+  try {
+    const result = await deleteComment(props.postId, comment.id)
+    comments.value = comments.value.filter((item) => item.id !== comment.id)
+    total.value = result.comment_count
+    ElMessage.success('评论已删除')
+    emit('commented', { id: props.postId, comment_count: result.comment_count })
+  } catch {
+    // 拦截器已提示
+  } finally {
+    removing.value = null
+  }
+}
 
 async function load(): Promise<void> {
   loading.value = true
@@ -86,6 +108,14 @@ async function submit(): Promise<void> {
             <span class="name">{{ comment.author.nickname }}</span>
             <span class="badge">{{ comment.author.title_emoji }} {{ comment.author.title_name }}</span>
             <span class="tiny time">{{ timeAgo(comment.created_at) }}</span>
+            <button
+              v-if="canRemove(comment)"
+              class="del"
+              :disabled="removing === comment.id"
+              @click="remove(comment)"
+            >
+              删除
+            </button>
           </div>
           <p>{{ comment.content }}</p>
         </div>
@@ -164,6 +194,26 @@ async function submit(): Promise<void> {
 
 .time {
   margin-left: auto;
+}
+
+/* 不用 hover 才显示：触屏没有 hover，评论删除按钮一直可见但保持低调 */
+.del {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0 2px;
+  font-family: inherit;
+}
+
+.del:hover {
+  color: #e8452c;
+}
+
+.del:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 p {
