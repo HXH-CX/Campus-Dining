@@ -4,14 +4,18 @@
 不靠数据库外键报 500 给前端看。菜品被引用后只允许下架，不物理删除。
 """
 
+from datetime import date, datetime, time, timedelta
+
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import Conflict, NotFound
 from app.models.catalog import Canteen, Dish, Merchant
-from app.models.post import Post
+from app.models.post import Comment, Post
 from app.models.rating import Rating
 from app.models.social import Want
+from app.models.user import User
+from app.schemas.admin import AdminOverviewOut, DayCount, EmptyMerchant, UntastedDish
 from app.schemas.catalog import (
     CanteenCreate,
     CanteenOut,
@@ -249,3 +253,100 @@ async def delete_post(db: AsyncSession, post_id: int) -> None:
         {"dish_id": dish_id},
     )
     await db.commit()
+
+
+async def overview(db: AsyncSession) -> AdminOverviewOut:
+    """后台首页看板。
+
+    "今日"按服务器本地时间的 0 点切，不按 UTC——管理员看的是自己的今天。
+    近 7 天趋势在 Python 里补零，SQL 只负责分组，避免写 MySQL 的递归日期表。
+    """
+    today = date.today()
+    today_start = datetime.combine(today, time.min)
+    week_start_date = today - timedelta(days=6)
+    week_start = datetime.combine(week_start_date, time.min)
+
+    users = await _count(db, User)
+    posts = await _count(db, Post)
+    comments = await _count(db, Comment)
+    ratings = await _count(db, Rating)
+    dishes = await _count(db, Dish)
+    merchants = await _count(db, Merchant)
+    canteens = await _count(db, Canteen)
+    wants = await _count(db, Want)
+
+    today_users = await _count(db, User, User.created_at >= today_start)
+    today_posts = await _count(db, Post, Post.created_at >= today_start)
+    today_comments = await _count(db, Comment, Comment.created_at >= today_start)
+
+    rows = (
+        await db.execute(
+            select(func.date(Post.created_at).label("day"), func.count().label("cnt"))
+            .where(Post.created_at >= week_start)
+            .group_by("day")
+        )
+    ).all()
+    by_day: dict[str, int] = {}
+    for day, cnt in rows:
+        key = day.isoformat() if hasattr(day, "isoformat") else str(day)
+        by_day[key] = int(cnt)
+
+    posts_by_day: list[DayCount] = []
+    for offset in range(7):
+        key = (week_start_date + timedelta(days=offset)).isoformat()
+        posts_by_day.append(DayCount(date=key, count=by_day.get(key, 0)))
+
+    # 上架但 0 人评过：新菜没人试，往往是缺一条好文案
+    untasted_conditions = (Dish.is_available.is_(True), Dish.rating_count == 0)
+    untasted_total = await _count(db, Dish, *untasted_conditions)
+    untasted_rows = (
+        await db.execute(
+            select(Dish.id, Dish.name, Merchant.name)
+            .join(Merchant, Dish.merchant_id == Merchant.id)
+            .where(*untasted_conditions)
+            .order_by(Dish.id)
+            .limit(5)
+        )
+    ).all()
+
+    # 没有任何在售菜品的商家：用户点进去是空的
+    selling = select(Dish.merchant_id).where(Dish.is_available.is_(True)).subquery()
+    empty_where = selling.c.merchant_id.is_(None)
+    empty_total = int(
+        await db.scalar(
+            select(func.count()).select_from(Merchant).outerjoin(selling, selling.c.merchant_id == Merchant.id).where(empty_where)
+        )
+        or 0
+    )
+    empty_rows = (
+        await db.execute(
+            select(Merchant.id, Merchant.name, Canteen.name)
+            .join(Canteen, Merchant.canteen_id == Canteen.id)
+            .outerjoin(selling, selling.c.merchant_id == Merchant.id)
+            .where(empty_where)
+            .order_by(Merchant.id)
+            .limit(5)
+        )
+    ).all()
+
+    unavailable_dishes = await _count(db, Dish, Dish.is_available.is_(False))
+
+    return AdminOverviewOut(
+        users=users,
+        posts=posts,
+        comments=comments,
+        ratings=ratings,
+        dishes=dishes,
+        merchants=merchants,
+        canteens=canteens,
+        wants=wants,
+        today_users=today_users,
+        today_posts=today_posts,
+        today_comments=today_comments,
+        posts_by_day=posts_by_day,
+        untasted_total=untasted_total,
+        untasted_dishes=[UntastedDish(id=i, name=n, merchant_name=m) for i, n, m in untasted_rows],
+        empty_merchant_total=empty_total,
+        empty_merchants=[EmptyMerchant(id=i, name=n, canteen_name=c) for i, n, c in empty_rows],
+        unavailable_dishes=unavailable_dishes,
+    )

@@ -156,6 +156,27 @@ export interface UserCommentItem {
   post: CommentedPost
 }
 
+/** 管理后台概览（GET /admin/overview） */
+export interface AdminOverview {
+  users: number
+  posts: number
+  comments: number
+  ratings: number
+  dishes: number
+  merchants: number
+  canteens: number
+  wants: number
+  today_users: number
+  today_posts: number
+  today_comments: number
+  posts_by_day: { date: string; count: number }[]
+  untasted_total: number
+  untasted_dishes: { id: number; name: string; merchant_name: string }[]
+  empty_merchant_total: number
+  empty_merchants: { id: number; name: string; canteen_name: string }[]
+  unavailable_dishes: number
+}
+
 export interface LoginResult {
   access_token: string
   token_type: string

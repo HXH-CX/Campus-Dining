@@ -414,6 +414,52 @@ def main():
     need("管理员标记", body["data"]["user"], ["is_admin"])
     check("is_admin 为真", body["data"]["user"]["is_admin"] is True, body["data"]["user"])
 
+    status, body = call("GET", "/admin/overview", token=admin)
+    check("数据概览 200", status == 200, body)
+    ov = body["data"]
+    need(
+        "概览字段",
+        ov,
+        [
+            "users",
+            "posts",
+            "comments",
+            "ratings",
+            "dishes",
+            "merchants",
+            "canteens",
+            "wants",
+            "today_users",
+            "today_posts",
+            "today_comments",
+            "posts_by_day",
+            "untasted_total",
+            "untasted_dishes",
+            "empty_merchant_total",
+            "empty_merchants",
+            "unavailable_dishes",
+        ],
+    )
+    check("近 7 天趋势是 7 个点", len(ov["posts_by_day"]) == 7, ov["posts_by_day"])
+    check(
+        "趋势日期升序且以今天结尾",
+        [d["date"] for d in ov["posts_by_day"]] == sorted(d["date"] for d in ov["posts_by_day"]),
+        [d["date"] for d in ov["posts_by_day"]],
+    )
+    check(
+        "趋势计数不超过帖子总数",
+        sum(d["count"] for d in ov["posts_by_day"]) <= ov["posts"],
+        (ov["posts"], sum(d["count"] for d in ov["posts_by_day"])),
+    )
+    check(
+        "没人评的菜只算上架且 0 评分",
+        ov["untasted_total"] >= len(ov["untasted_dishes"]) and all(
+            isinstance(item["name"], str) and item["merchant_name"] for item in ov["untasted_dishes"]
+        ),
+        ov["untasted_dishes"],
+    )
+    check("学生看不到概览", call("GET", "/admin/overview", token=token)[0] == 403, "应为 403")
+
     status, body = call("GET", "/admin/canteens?page=1&page_size=20", token=admin)
     check("后台食堂表", status == 200 and {"items", "total"} <= set(body["data"]), body)
 

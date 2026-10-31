@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from '@/utils/feedback'
+import { ElMessage, ElMessageBox } from '@/utils/feedback'
 import { toggleLike, deletePost } from '@/api/post'
 import { adminDeletePost } from '@/api/admin'
 import { useAuthStore } from '@/stores/auth'
@@ -80,6 +80,19 @@ async function handleLike(): Promise<void> {
 }
 
 async function handleDelete(): Promise<void> {
+  // 删帖会连带清掉这条的评论与点赞，且不可恢复——必须二次确认，别让误触变成事故
+  try {
+    await ElMessageBox.confirm(
+      isOwner.value
+        ? '这条食评和它下面的评论都会消失，不能恢复。菜品评分会保留。'
+        : '将以管理员身份删除这条帖子，操作不可撤销。',
+      isOwner.value ? '删除这条食评？' : '管理员删除',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '再想想' },
+    )
+  } catch {
+    return // 点了取消
+  }
+
   try {
     // 自己的帖子走用户接口；管理员删别人的走后台应急接口
     if (isOwner.value) await deletePost(props.post.id)

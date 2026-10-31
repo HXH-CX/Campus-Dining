@@ -49,7 +49,7 @@ const router = createRouter({
       component: () => import('@/layouts/AdminLayout.vue'),
       meta: { requiresAuth: true, requiresAdmin: true },
       children: [
-        { path: '', redirect: { name: 'admin-canteens' } },
+        { path: '', name: 'admin-dashboard', component: () => import('@/views/admin/DashboardAdmin.vue') },
         { path: 'canteens', name: 'admin-canteens', component: () => import('@/views/admin/CanteenAdmin.vue') },
         { path: 'merchants', name: 'admin-merchants', component: () => import('@/views/admin/MerchantAdmin.vue') },
         { path: 'dishes', name: 'admin-dishes', component: () => import('@/views/admin/DishAdmin.vue') },

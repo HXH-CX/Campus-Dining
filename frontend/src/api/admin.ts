@@ -1,5 +1,10 @@
 import { del, get, patch, post, put } from './request'
-import type { Canteen, Dish, Merchant, PageData, Post } from '@/types'
+import type { AdminOverview, Canteen, Dish, Merchant, PageData, Post } from '@/types'
+
+// ---- 概览
+export function adminOverview() {
+  return get<AdminOverview>('/admin/overview')
+}
 
 // ---- 食堂
 export function adminCanteens(page = 1, pageSize = 20) {

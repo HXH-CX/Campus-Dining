@@ -27,7 +27,7 @@ function handleCommand(command: string): void {
     return
   }
   if (command === 'admin') {
-    router.push({ name: 'admin-canteens' })
+    router.push({ name: 'admin-dashboard' })
   }
 }
 </script>

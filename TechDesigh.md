@@ -94,6 +94,7 @@
 ### 3.3.6 管理后台 CRUD（👑）
 | 方法 | 路径 | 说明 |
 |---|---|---|
+| GET | `/admin/overview` | 数据概览：总量 / 今日新增 / 近 7 天发帖趋势（缺数据的天补 0）/ 上架但 0 人评的菜 / 无在售菜品的商家 / 已下架菜品数。全部查询时现算，不建统计表 |
 | GET | `/admin/canteens?page=&page_size=` | 食堂列表 |
 | POST | `/admin/canteens` | 创建食堂 |
 | PUT | `/admin/canteens/{id}` | 改名 |

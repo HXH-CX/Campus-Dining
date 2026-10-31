@@ -8,6 +8,7 @@ const route = useRoute()
 const router = useRouter()
 
 const menus = [
+  { name: 'admin-dashboard', label: '数据概览', icon: '📊' },
   { name: 'admin-canteens', label: '食堂管理', icon: '🏫' },
   { name: 'admin-merchants', label: '商家管理', icon: '🏪' },
   { name: 'admin-dishes', label: '菜品管理', icon: '🍲' },

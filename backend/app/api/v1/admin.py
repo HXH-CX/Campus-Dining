@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import DbSession, Paging, get_current_admin
 from app.core.response import ApiResponse, PageData, ok, paginated
+from app.schemas.admin import AdminOverviewOut
 from app.schemas.catalog import (
     CanteenCreate,
     CanteenOut,
@@ -23,6 +24,14 @@ from app.schemas.post import PostOut
 from app.services import admin_service
 
 router = APIRouter(prefix="/admin", tags=["管理后台"], dependencies=[Depends(get_current_admin)])
+
+
+# ---------------------------------------------------------------- 概览
+
+
+@router.get("/overview", response_model=ApiResponse[AdminOverviewOut], summary="后台数据概览")
+async def overview(db: DbSession):
+    return ok(await admin_service.overview(db))
 
 
 # ---------------------------------------------------------------- 食堂
