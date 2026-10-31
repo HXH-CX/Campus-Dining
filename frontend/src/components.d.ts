@@ -39,6 +39,7 @@ declare module 'vue' {
     ErrorBoundary: typeof import('./components/ErrorBoundary.vue')['default']
     ErrorState: typeof import('./components/ErrorState.vue')['default']
     HotBoard: typeof import('./components/HotBoard.vue')['default']
+    ImageViewer: typeof import('./components/ImageViewer.vue')['default']
     PostCard: typeof import('./components/PostCard.vue')['default']
     RandomDishDialog: typeof import('./components/RandomDishDialog.vue')['default']
     RatingStars: typeof import('./components/RatingStars.vue')['default']

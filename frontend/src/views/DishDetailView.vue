@@ -9,6 +9,7 @@ import PostCard from '@/components/PostCard.vue'
 import RatingStars from '@/components/RatingStars.vue'
 import AppSkeleton from '@/components/AppSkeleton.vue'
 import ErrorState from '@/components/ErrorState.vue'
+import ImageViewer from '@/components/ImageViewer.vue'
 import { useAuthStore } from '@/stores/auth'
 import { timeAgo } from '@/utils/format'
 import type { Dish, Post } from '@/types'
@@ -28,6 +29,7 @@ const loading = ref(true)
 const postLoading = ref(false)
 const error = ref<unknown>(null)
 const wanting = ref(false)
+const coverOpen = ref(false)
 
 /** 想吃：一个接口翻转状态，返回最新的想吃人数，不需要前端猜 */
 async function handleWant(): Promise<void> {
@@ -123,7 +125,13 @@ function onDeleted(id: number): void {
 
     <template v-else-if="dish">
       <header class="card header">
-        <img v-if="dish.image_url" :src="dish.image_url" :alt="dish.name" class="cover" />
+        <img
+          v-if="dish.image_url"
+          :src="dish.image_url"
+          :alt="dish.name"
+          class="cover"
+          @click="coverOpen = true"
+        />
         <div v-else class="cover img-fallback">{{ dish.name.slice(0, 1) }}</div>
 
         <div class="info">
@@ -154,6 +162,12 @@ function onDeleted(id: number): void {
           </el-button>
         </div>
       </header>
+
+      <ImageViewer
+        v-model:visible="coverOpen"
+        :index="0"
+        :images="dish.image_url ? [dish.image_url] : []"
+      />
 
       <el-tabs v-model="tab" class="tabs">
         <el-tab-pane :label="`食评 ${postTotal}`" name="posts">
@@ -199,6 +213,7 @@ function onDeleted(id: number): void {
   object-fit: cover;
   font-size: 34px;
   flex-shrink: 0;
+  cursor: zoom-in;
 }
 
 .info {

@@ -9,6 +9,7 @@ import { timeAgo } from '@/utils/format'
 import RatingStars from './RatingStars.vue'
 import CommentDialog from './CommentDialog.vue'
 import EditPostDialog from './EditPostDialog.vue'
+import ImageViewer from './ImageViewer.vue'
 import type { Post } from '@/types'
 
 const props = defineProps<{ post: Post; detail?: boolean }>()
@@ -26,6 +27,13 @@ const router = useRouter()
 const busy = ref(false)
 const commentOpen = ref(false)
 const editOpen = ref(false)
+const viewerOpen = ref(false)
+const viewerIndex = ref(0)
+
+function openViewer(index: number): void {
+  viewerIndex.value = index
+  viewerOpen.value = true
+}
 const initial = computed(() => props.post.author.nickname.slice(0, 1))
 const images = computed(() => props.post.images || [])
 
@@ -148,8 +156,15 @@ const deleteLabel = computed(() => (isOwner.value ? '删除这条' : '管理员�
 
     <p v-if="post.content" class="content">{{ post.content }}</p>
 
-    <div v-if="images.length" class="thumbs" :class="[`n${images.length}`, { bigger: detail }]">
-      <img v-for="(src, index) in images" :key="index" :src="src" :alt="post.dish.name" loading="lazy" />
+    <div v-if="images.length" class="thumbs" :class="[`n${images.length}`, { bigger: detail, zoomable: detail }]">
+      <img
+        v-for="(src, index) in images"
+        :key="index"
+        :src="src"
+        :alt="post.dish.name"
+        loading="lazy"
+        @click.stop="detail ? openViewer(index) : goDetail()"
+      />
     </div>
 
     <footer class="foot">
@@ -173,6 +188,8 @@ const deleteLabel = computed(() => (isOwner.value ? '删除这条' : '管理员�
     />
 
     <EditPostDialog v-if="isOwner" v-model="editOpen" :post="post" @saved="onEdited" />
+
+    <ImageViewer v-model:visible="viewerOpen" v-model:index="viewerIndex" :images="images" />
   </article>
 </template>
 
@@ -311,6 +328,11 @@ const deleteLabel = computed(() => (isOwner.value ? '删除这条' : '管理员�
   object-fit: cover;
   border-radius: 10px;
   background: #faf3ec;
+}
+
+/* 只有详情页把图当"可放大"的入口；列表里点图仍然是进帖子，别抢掉主要动作 */
+.thumbs.zoomable img {
+  cursor: zoom-in;
 }
 
 /* 详情页图片更大：单图铺满，多图仍两列 */
