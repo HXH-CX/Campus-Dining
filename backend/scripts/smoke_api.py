@@ -274,6 +274,13 @@ def main():
     post_id = body["data"]["id"]
     temp["posts"].add(post_id)
     check("帖子带出商家与食堂", body["data"]["merchant"]["canteen_name"] == "冒烟帖子食堂", body)
+    # 前端发帖后直接用响应里的 dish 渲染结果面板，这里必须是重算后的值。
+    # 曾经因为"裸 SQL 重算 + expire_on_commit=False"返回重算前的快照（0.0 分 / 0 人评过）。
+    check(
+        "响应体里的菜品聚合已含本次评分",
+        body["data"]["dish"]["avg_rating"] == 5.0 and body["data"]["dish"]["rating_count"] == 1,
+        body["data"]["dish"],
+    )
 
     status, body = call("GET", f"/dishes/{p_dishes[0]}")
     check("发帖后菜品聚合=5/1", body["data"]["avg_rating"] == 5.0 and body["data"]["rating_count"] == 1, body)
@@ -285,6 +292,11 @@ def main():
     check("同菜二帖成功", status == 200, body)
     temp["posts"].add(body["data"]["id"])
     post2_id = body["data"]["id"]
+    check(
+        "响应体里是覆盖后的聚合（不是上一版快照）",
+        body["data"]["dish"]["avg_rating"] == 3.0 and body["data"]["dish"]["rating_count"] == 1,
+        body["data"]["dish"],
+    )
 
     status, body = call("GET", f"/dishes/{p_dishes[0]}")
     check(

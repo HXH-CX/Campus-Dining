@@ -412,3 +412,9 @@ async def _recalc_dish(db: AsyncSession, dish_id: int) -> None:
         ),
         {"dish_id": dish_id},
     )
+    # 上面是裸 SQL，会话里的 Dish 对象还是旧值；而 expire_on_commit=False，
+    # 提交后也不会自动失效。同一个请求紧接着就要把这个对象返回给前端，
+    # 不刷新就会出现"刚打完 5 星，菜品仍显示 0.0 分 / 0 人评过"。
+    dish = await db.get(Dish, dish_id)
+    if dish is not None:
+        await db.refresh(dish)

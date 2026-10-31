@@ -41,6 +41,7 @@ declare module 'vue' {
     HotBoard: typeof import('./components/HotBoard.vue')['default']
     ImageViewer: typeof import('./components/ImageViewer.vue')['default']
     PostCard: typeof import('./components/PostCard.vue')['default']
+    PostResultPanel: typeof import('./components/PostResultPanel.vue')['default']
     RandomDishDialog: typeof import('./components/RandomDishDialog.vue')['default']
     RatingStars: typeof import('./components/RatingStars.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

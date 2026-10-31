@@ -3,13 +3,15 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { UploadRequestOptions, UploadUserFile } from 'element-plus'
 import { ElMessage } from '@/utils/feedback'
-import { fetchCanteens, fetchCanteenMerchants, fetchMerchantDishes } from '@/api/catalog'
+import { fetchCanteens, fetchCanteenMerchants, fetchMerchantDishes, fetchTopDishes } from '@/api/catalog'
 import { createPost } from '@/api/post'
 import { uploadImage } from '@/api/upload'
 import { humanSize } from '@/utils/image'
 import ErrorState from '@/components/ErrorState.vue'
 import AppSkeleton from '@/components/AppSkeleton.vue'
+import PostResultPanel from '@/components/PostResultPanel.vue'
 import { useAuthStore } from '@/stores/auth'
+import type { Post } from '@/types'
 
 interface Option {
   value: number
@@ -29,6 +31,10 @@ const fileList = ref<UploadUserFile[]>([])
 const treeLoading = ref(true)
 const treeError = ref<unknown>(null)
 const submitting = ref(false)
+/** 发布成功后的结果面板；非空时整个表单被替换掉 */
+const done = ref<Post | null>(null)
+const rank = ref<number | null>(null)
+const rankLoading = ref(false)
 /** 累计压缩成效，用于在表单下方给一条轻提示 */
 const saved = reactive({ before: 0, after: 0, count: 0 })
 
@@ -150,26 +156,72 @@ async function submit(): Promise<void> {
   }
   submitting.value = true
   try {
-    await createPost({
+    const post = await createPost({
       dish_id: dishId.value,
       score: form.score,
       content: form.content.trim() || undefined,
       images: images.value,
     })
-    ElMessage.success('发布成功，去看看吧')
-    router.push({ name: 'dish', params: { id: dishId.value } })
+    done.value = post
+    void loadRank(post)
+  } catch {
+    // 拦截器已提示；留在表单上让用户重试，输入内容不能丢
   } finally {
     submitting.value = false
   }
+}
+
+/** 发完一条，把"这道菜现在几分、离高分榜还差多远"算出来 */
+async function loadRank(post: Post): Promise<void> {
+  // 不达标的菜不必查榜：省一次请求，也避免前端自己判断门槛和后端漂移
+  if (post.dish.avg_rating < 4 || post.dish.rating_count < 2) {
+    rank.value = null
+    return
+  }
+  rankLoading.value = true
+  try {
+    const top = await fetchTopDishes({ limit: 20 })
+    const index = top.findIndex((item) => item.id === post.dish.id)
+    rank.value = index >= 0 ? index + 1 : null
+  } catch {
+    // 榜单查不到不影响"发布成功"这件事本身
+    rank.value = null
+  } finally {
+    rankLoading.value = false
+  }
+}
+
+/** 再发一条：清干净表单，但保留刚才选的三级联动，通常是在同一家店连着发 */
+function again(): void {
+  done.value = null
+  rank.value = null
+  rankLoading.value = false
+  form.score = 0
+  form.content = ''
+  images.value = []
+  fileList.value = []
+  saved.before = 0
+  saved.after = 0
+  saved.count = 0
 }
 </script>
 
 <template>
   <div class="page narrow">
-    <h1 class="page-title">发一条食评</h1>
-    <p class="muted sub">
-      当前身份：{{ auth.user?.title_emoji }} {{ auth.displayName }} · {{ auth.user?.title_name }}
-    </p>
+    <PostResultPanel
+      v-if="done"
+      :post="done"
+      :rank="rank"
+      :rank-loading="rankLoading"
+      @again="again"
+      @home="router.push({ name: 'home' })"
+    />
+
+    <template v-else>
+      <h1 class="page-title">发一条食评</h1>
+      <p class="muted sub">
+        当前身份：{{ auth.user?.title_emoji }} {{ auth.displayName }} · {{ auth.user?.title_name }}
+      </p>
 
     <div class="card">
       <AppSkeleton v-if="treeLoading" variant="form" :count="3" />
@@ -233,6 +285,7 @@ async function submit(): Promise<void> {
     <p class="tiny note">
       提示：同一道菜重复打分不会新增记录，会覆盖你之前的评分（评分代表你当前的看法）。
     </p>
+    </template>
   </div>
 </template>
 

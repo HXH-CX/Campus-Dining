@@ -98,5 +98,7 @@ alembic/          # 数据库迁移脚本
 22. **看图用自写的 `ImageViewer`，不要引 `el-image-viewer`**：那个组件要额外带样式和 popper 依赖，而帖子列表每张卡片都会挂预览。**列表里点图 = 进帖子详情，详情页点图 = 大图**（`PostCard` 用 `detail` 区分），别把列表的主点击区域改成看图。SVG 占位图允许放大到 `min(88vw, 860px)`，位图保持原尺寸（放大只会糊）。
 23. **通知是"事件即通知"，三个不变式**：① **不给自私发**——`user_id == actor_id` 直接返回；② **同一事件只留一条**——`push()` 先删同 `(接收者, 触发者, 类型, 帖子)` 的旧行再插入，取消点赞再点只刷新时间，不堆五条"赞了你"；③ **跟着源数据消失**——`post_id` / `comment_id` 外键都带 `ON DELETE CASCADE`，删帖删评论自动清通知；点赞撤回和取关要在 service 里显式调 `notify_service.revoke()`（那不是删行，CASCADE 管不到）。前端铃铛用 `unread-count` 轮询（60s，`document.hidden` 时跳过），**不要**为了角标去拉整页通知。
 24. **`author_brief()` 放在 `app/services/dto.py`，不要留在 `post_service`**：`notify_service` 也要用它，放回 post_service 会让两个模块互相 import（已在启动时炸过一次）。同理，任何被多个 service 复用的 DTO 组装函数都往 `dto.py` 放。
+25. **裸 SQL 改过 `dishes` 聚合后必须刷新 ORM 对象**：`_recalc_dish()` 用的是 `UPDATE ... SET avg_rating=...`，会话里的 `Dish` 实例不会跟着变，而 `expire_on_commit=False` 让它在 commit 后也不会失效。结果就是"刚打 5 星，发帖响应里菜品仍显示 0.0 分 / 0 人评过"——前端结果面板直接拿这个响应渲染，会当场露出马脚。函数末尾已加 `db.refresh(dish)`；以后任何裸 SQL 改列的地方都照此处理。
+26. **发帖成功后不要"toast + 跳转"了事**：评分是产品最核心的动作，用户需要知道这一票改变了什么。`CreatePostView` 在成功后原地换成 `PostResultPanel`（我打的 → 这道菜现在 → 离高分榜多远），不要再改回 `router.push({ name: 'dish' })`。榜单名次由前端查 `/dishes/top` 后传进组件，**不达标就不查**（省一次请求，也避免前端自己复制一份门槛常量去判断）；查榜失败只影响名次那一行，绝不能影响"发布成功"这件事本身。
 
 
