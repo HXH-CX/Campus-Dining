@@ -87,5 +87,6 @@ alembic/          # 数据库迁移脚本
 11. **Element Plus 只能按需引入**：模板组件由自定义 resolver 自动引入；`ElMessage` / `ElMessageBox` 必须从 `@/utils/feedback` 导入，**禁止** `import ... from 'element-plus'`（根 barrel 会把整包 944KB 拖进产物）。新增用到的函数式组件时，记得在 `main.ts` 补它的 `style/css`。
 12. **列表页四条状态分支缺一不可**：`loading`（用 `AppSkeleton`）/ `error`（`ErrorState`）/ `empty`（文案）/ `content`。骨架不要用 `el-skeleton` 的文字条，形状对不上会跳版。
 13. **图片必须走 `uploadImage()` 上传**（内部先 `compressImage()` 再发 multipart）：它会按 `maxEdge` 缩放并转 WebP，异常时自动退回原图。**不要**直接 `xhr`/`fetch` 传原始 `File`。压缩后文件名后缀会跟着实际编码变（`.webp`），因为后端校验扩展名与文件头魔数一致。
+14. **帖子编辑只改 `content` / `images`**：`PUT /posts/{id}` 不接受 `score` / `dish_id`。改评分会连带影响菜品均分，那是"重新表态"，必须走发帖的 upsert。请求体用 `model_fields_set` 区分"没传"与"传 null"——没传就保持原样，传 null 才清空。
 
 

@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AppSkeleton: typeof import('./components/AppSkeleton.vue')['default']
     CommentDialog: typeof import('./components/CommentDialog.vue')['default']
+    EditPostDialog: typeof import('./components/EditPostDialog.vue')['default']
     ElBreadcrumb: typeof import('element-plus/es/components/breadcrumb/index')['ElBreadcrumb']
     ElBreadcrumbItem: typeof import('element-plus/es/components/breadcrumb/index')['ElBreadcrumbItem']
     ElButton: typeof import('element-plus/es/components/button/index')['ElButton']

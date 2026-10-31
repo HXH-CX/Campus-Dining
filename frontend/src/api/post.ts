@@ -1,4 +1,4 @@
-import { del, get, post } from './request'
+import { del, get, post, put } from './request'
 import type { Comment, LikeResult, PageData, Post } from '@/types'
 
 export interface FeedQuery {
@@ -27,6 +27,10 @@ export function createPost(payload: {
   images?: string[]
 }) {
   return post<Post>('/posts', payload)
+}
+
+export function updatePost(postId: number, payload: { content?: string | null; images?: string[] }) {
+  return put<Post>(`/posts/${postId}`, payload)
 }
 
 export function deletePost(postId: number) {

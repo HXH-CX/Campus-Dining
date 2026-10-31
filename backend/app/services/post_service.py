@@ -24,6 +24,7 @@ from app.schemas.post import (
     LikeResult,
     MerchantInPost,
     PostCreate,
+    PostUpdate,
     PostOut,
 )
 
@@ -185,6 +186,30 @@ async def create_post(db: AsyncSession, user: User, payload: PostCreate) -> Post
 
     await db.commit()
     return await get_post(db, post.id, viewer=user)
+
+
+async def update_post(db: AsyncSession, user: User, post_id: int, payload: PostUpdate) -> PostOut:
+    """编辑帖子文案与配图。
+
+    POST 是"又去吃了一次"的表达，编辑是"上次那句话写错了"，所以这里不碰菜品和评分：
+    改评分会连带影响菜品均分，那是重新表态，应该走发帖的 upsert。
+    """
+    post = await db.get(Post, post_id)
+    if post is None:
+        raise NotFound("帖子不存在")
+    if post.user_id != user.id:
+        raise Forbidden("只能编辑自己发布的帖子")
+
+    # 用 model_fields_set 区分"没传这个字段"和"传了 null"：
+    # 前者保持原样，后者才是一次有意的清空（比如删掉文案或删光配图）
+    given = payload.model_fields_set
+    if "content" in given:
+        post.content = payload.content
+    if "images" in given:
+        post.images = payload.images or []
+
+    await db.commit()
+    return await get_post(db, post_id, viewer=user)
 
 
 async def delete_post(db: AsyncSession, user: User, post_id: int) -> None:

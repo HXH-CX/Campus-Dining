@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser, Paging
 from app.core.response import ApiResponse, PageData, ok, paginated
-from app.schemas.post import CommentCreate, CommentOut, LikeResult, PostCreate, PostOut
+from app.schemas.post import CommentCreate, CommentOut, LikeResult, PostCreate, PostOut, PostUpdate
 from app.services import catalog_service, hot_service, post_service, title_service
 
 router = APIRouter(tags=["社区"])
@@ -46,6 +46,13 @@ async def hot(db: DbSession, viewer: OptionalUser):
 @router.get("/posts/{post_id}", response_model=ApiResponse[PostOut], summary="帖子详情")
 async def read_post(post_id: int, db: DbSession, viewer: OptionalUser):
     return ok(await post_service.get_post(db, post_id, viewer=viewer))
+
+
+@router.put("/posts/{post_id}", response_model=ApiResponse[PostOut], summary="编辑自己的帖子（文案与配图）")
+async def update_post(post_id: int, payload: PostUpdate, db: DbSession, current: CurrentUser):
+    post = await post_service.update_post(db, current, post_id, payload)
+    # 文案变了会影响关键词搜索，但互动数没变，热榜排序不受影响，无需 invalidate
+    return ok(post)
 
 
 @router.delete("/posts/{post_id}", response_model=ApiResponse[None], summary="删除自己的帖子")

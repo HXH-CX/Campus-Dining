@@ -171,6 +171,34 @@ def main():
     check("评论列表分页", status == 200 and body["data"]["total"] >= 1, body)
     need("评论项字段", body["data"]["items"][0], ["id", "content", "created_at", "author"])
 
+    print("== 5.1 编辑帖子（只改文案与配图）")
+    new_text = "改过的文案：还行，就是有点咸"
+    status, body = call("PUT", f"/posts/{post_id}", {"content": new_text}, token=token)
+    check("编辑自己的帖子", status == 200, body)
+    edited = body["data"]
+    check("文案已更新", edited["content"] == new_text, edited.get("content"))
+    check("只传 content 时配图不被清空", edited["images"] == post["images"], edited.get("images"))
+    check("评分不受编辑影响", edited["author_score"] == post["author_score"], edited.get("author_score"))
+
+    status, body = call("GET", f"/posts/{post_id}")
+    check("详情读到新文案", status == 200 and body["data"]["content"] == new_text, body)
+
+    # 只传 images：content 应保持原样（靠 model_fields_set 区分"没传"和"传 null"）
+    status, body = call("PUT", f"/posts/{post_id}", {"images": []}, token=token)
+    check("仅传 images 不动文案", status == 200 and body["data"]["content"] == new_text, body.get("data"))
+    check("配图已清空", body["data"]["images"] == [], body.get("data"))
+
+    status, body = call("POST", "/auth/login", {"username": "xiaohong", "password": "123456"})
+    other_token = body["data"]["access_token"]
+    status, body = call("PUT", f"/posts/{post_id}", {"content": "我是别人，改你的帖"}, token=other_token)
+    check("改别人的帖子 403", status == 403, body)
+
+    status, body = call("PUT", f"/posts/{post_id}", {"images": ["javascript:alert(1)"]}, token=token)
+    check("非法图片地址 400", status == 400, body)
+
+    status, body = call("PUT", "/posts/999999", {"content": "x"}, token=token)
+    check("编辑不存在的帖子 404", status == 404, body)
+
     print("== 6. 个人中心")
     status, body = call("GET", f"/users/{post['author']['id']}")
     check("用户主页", status == 200, body)

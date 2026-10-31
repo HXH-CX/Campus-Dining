@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { timeAgo } from '@/utils/format'
 import RatingStars from './RatingStars.vue'
 import CommentDialog from './CommentDialog.vue'
+import EditPostDialog from './EditPostDialog.vue'
 import type { Post } from '@/types'
 
 const props = defineProps<{ post: Post; detail?: boolean }>()
@@ -24,12 +25,23 @@ const router = useRouter()
 
 const busy = ref(false)
 const commentOpen = ref(false)
+const editOpen = ref(false)
 const initial = computed(() => props.post.author.nickname.slice(0, 1))
 const images = computed(() => props.post.images || [])
 
 function onCommented(payload: { id: number; comment_count: number }): void {
   props.post.comment_count = payload.comment_count
   emit('commented', payload)
+}
+
+/**
+ * 保存后就地更新卡片内容。
+ * 这里改的是 props.post 的字段（不是重新赋值 props 本身）：父组件持有同一个响应式对象，
+ * 6 个列表页因此不用各自写一遍"替换数组元素"的逻辑。与上面 comment_count 的处理方式一致。
+ */
+function onEdited(updated: Post): void {
+  props.post.content = updated.content
+  props.post.images = updated.images
 }
 
 function goDish(): void {
@@ -107,7 +119,8 @@ const deleteLabel = computed(() => (isOwner.value ? '删除这条' : '管理员�
           <span class="more">···</span>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item @click="handleDelete">{{ deleteLabel }}</el-dropdown-item>
+              <el-dropdown-item v-if="isOwner" @click="editOpen = true">编辑这条</el-dropdown-item>
+              <el-dropdown-item :divided="isOwner" @click="handleDelete">{{ deleteLabel }}</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -145,6 +158,8 @@ const deleteLabel = computed(() => (isOwner.value ? '删除这条' : '管理员�
       :dish-name="post.dish.name"
       @commented="onCommented"
     />
+
+    <EditPostDialog v-if="isOwner" v-model="editOpen" :post="post" @saved="onEdited" />
   </article>
 </template>
 

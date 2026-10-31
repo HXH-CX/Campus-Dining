@@ -68,7 +68,8 @@
 | GET | `/posts/feed` | 信息流 `?sort=latest\|hot&page=&page_size=&keyword=`（keyword 匹配帖子文案） |
 | GET | `/posts/hot` | 24小时热榜 Top10（读缓存） |
 | GET | `/posts/{id}` | 帖子详情（含菜品、商家、作者、我是否点过赞） |
-| DELETE | `/posts/{id}` 🔒 | 删除自己的帖子（同时回滚聚合与计数） |
+| PUT | `/posts/{id}` 🔒 | 编辑自己的帖子：只接受 `content` / `images`，**不含评分与菜品**（改评分语义是重新表态，走发帖 upsert）。字段可省略，传 `null` 表示清空 |
+| DELETE | `/posts/{id}` 🔒 | 删除自己的帖子（评论与点赞随帖级联，**评分保留**） |
 | POST | `/posts/{id}/like` 🔒 | 点赞/取消点赞（幂等切换），同步维护 `like_count` |
 | GET | `/posts/{id}/comments` | 评论列表（分页） |
 | POST | `/posts/{id}/comments` 🔒 | 发表评论，同步维护 `comment_count` |

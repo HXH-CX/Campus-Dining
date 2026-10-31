@@ -5,6 +5,21 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
 
+def _strip_content(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
+
+
+def _check_image_urls(value: list[str]) -> list[str]:
+    for url in value:
+        # 只接受站内静态路径或 http(s)，防止前端塞 javascript: 之类的串
+        if not (url.startswith("/uploads/") or url.startswith(("http://", "https://"))):
+            raise ValueError("图片地址必须以 /uploads/ 或 http(s):// 开头")
+    return value
+
+
 class PostCreate(BaseModel):
     dish_id: int
     # 评分必填：语义是"我现在对这道菜的看法"，重复发帖会覆盖
@@ -14,20 +29,37 @@ class PostCreate(BaseModel):
 
     @field_validator("content")
     @classmethod
-    def _strip_content(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        value = value.strip()
-        return value or None
+    def _v_content(cls, value: str | None) -> str | None:
+        return _strip_content(value)
 
     @field_validator("images")
     @classmethod
-    def _check_images(cls, value: list[str]) -> list[str]:
-        for url in value:
-            # 只接受站内静态路径或 http(s)，防止前端塞 javascript: 之类的串
-            if not (url.startswith("/uploads/") or url.startswith(("http://", "https://"))):
-                raise ValueError("图片地址必须以 /uploads/ 或 http(s):// 开头")
-        return value
+    def _v_images(cls, value: list[str]) -> list[str]:
+        return _check_image_urls(value)
+
+
+class PostUpdate(BaseModel):
+    """编辑帖子。
+
+    只允许改文案与配图：菜品和评分属于「我的看法」，改它的语义是重新表态，
+    应该走发帖（覆盖评分）而不是编辑一条历史帖子。两个字段都可省略，
+    传 null 的 content 表示清空文案。
+    """
+
+    content: str | None = Field(default=None, max_length=500)
+    images: list[str] | None = Field(default=None, max_length=4)
+
+    @field_validator("content")
+    @classmethod
+    def _v_content(cls, value: str | None) -> str | None:
+        return _strip_content(value)
+
+    @field_validator("images")
+    @classmethod
+    def _v_images(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        return _check_image_urls(value)
 
 
 class AuthorBrief(BaseModel):
