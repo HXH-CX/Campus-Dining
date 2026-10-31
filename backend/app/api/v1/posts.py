@@ -31,13 +31,13 @@ async def create_post(payload: PostCreate, db: DbSession, current: CurrentUser):
 @router.get(
     "/posts/feed",
     response_model=ApiResponse[PageData[PostOut]],
-    summary="信息流（latest / hot）",
+    summary="信息流（latest / hot / following）",
 )
 async def feed(
     db: DbSession,
     paging: Paging,
     viewer: OptionalUser,
-    sort: Literal["latest", "hot"] = "latest",
+    sort: Literal["latest", "hot", "following"] = "latest",
     keyword: str = Query("", max_length=50, description="按帖子文案模糊匹配"),
 ):
     items, total = await post_service.list_posts(

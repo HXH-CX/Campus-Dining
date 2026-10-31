@@ -8,11 +8,21 @@ import TopDishBoard from '@/components/TopDishBoard.vue'
 import RandomDishDialog from '@/components/RandomDishDialog.vue'
 import AppSkeleton from '@/components/AppSkeleton.vue'
 import ErrorState from '@/components/ErrorState.vue'
+import { useAuthStore } from '@/stores/auth'
 import type { Post } from '@/types'
 
 const router = useRouter()
+const auth = useAuthStore()
 
-const sort = ref<'latest' | 'hot'>('latest')
+const TABS = [
+  { key: 'latest', label: '最新' },
+  { key: 'hot', label: '最热' },
+  { key: 'following', label: '关注' },
+] as const
+
+type SortKey = (typeof TABS)[number]['key']
+
+const sort = ref<SortKey>('latest')
 const posts = ref<Post[]>([])
 const total = ref(0)
 const page = ref(1)
@@ -22,8 +32,21 @@ const error = ref<unknown>(null)
 const hotRef = ref<{ reload: () => Promise<void> } | null>(null)
 const randomOpen = ref(false)
 
+/** 关注流未登录时的清空动作：不打注定 401 的请求，页面直接给登录引导 */
+function clearForGuest(): void {
+  posts.value = []
+  total.value = 0
+  error.value = null
+  loading.value = false
+  page.value = 1
+}
+
 /** page 只在请求成功后才推进，避免失败一次就永久错位 */
 async function fetchPage(target: number, append: boolean): Promise<void> {
+  if (sort.value === 'following' && !auth.isLoggedIn) {
+    clearForGuest()
+    return
+  }
   if (loading.value) return
   loading.value = true
   if (!append) error.value = null
@@ -38,6 +61,10 @@ async function fetchPage(target: number, append: boolean): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+function goLogin(): void {
+  router.push({ name: 'login', query: { redirect: router.currentRoute.value.fullPath } })
 }
 
 function retry(): void {
@@ -63,7 +90,12 @@ function onDeleted(id: number): void {
   void hotRef.value?.reload()
 }
 
-watch(sort, () => void fetchPage(1, false))
+watch(sort, () => {
+  // 切 tab 先清空：否则新 tab 加载时还挂着上一个 tab 的帖子，顺序和内容都对不上
+  posts.value = []
+  total.value = 0
+  void fetchPage(1, false)
+})
 
 onMounted(() => void fetchPage(1, false))
 </script>
@@ -89,14 +121,43 @@ onMounted(() => void fetchPage(1, false))
       <TopDishBoard />
 
       <div class="tabs">
-        <button class="tab" :class="{ active: sort === 'latest' }" @click="sort = 'latest'">最新</button>
-        <button class="tab" :class="{ active: sort === 'hot' }" @click="sort = 'hot'">最热</button>
-        <span class="tiny count">共 {{ total }} 条</span>
+        <button
+          v-for="tab in TABS"
+          :key="tab.key"
+          class="tab"
+          :class="{ active: sort === tab.key }"
+          @click="sort = tab.key"
+        >
+          {{ tab.label }}
+          <span v-if="tab.key === 'following' && auth.user?.following_count" class="tab-count">
+            {{ auth.user.following_count }}
+          </span>
+        </button>
+        <span v-if="!(sort === 'following' && !auth.isLoggedIn)" class="tiny count">共 {{ total }} 条</span>
       </div>
 
       <AppSkeleton v-if="loading && !posts.length" variant="post" :count="3" />
 
       <ErrorState v-else-if="error" :error="error" title="信息流没加载出来" @retry="retry" />
+
+      <div v-else-if="sort === 'following' && !auth.isLoggedIn" class="card empty follow-empty">
+        <p class="empty-title">登录后才能看关注动态</p>
+        <p class="tiny">关注的人发了什么，集中在这里，不用在信息流里翻</p>
+        <el-button type="primary" round @click="goLogin">去登录</el-button>
+      </div>
+
+      <div v-else-if="!posts.length && sort === 'following'" class="card empty follow-empty">
+        <template v-if="!auth.user?.following_count">
+          <p class="empty-title">还没关注任何人</p>
+          <p class="tiny">点开任意一条帖子，进作者主页就能关注；之后他们的新帖会出现在这里</p>
+          <el-button round @click="sort = 'latest'">先去逛逛</el-button>
+        </template>
+        <template v-else>
+          <p class="empty-title">关注的人还没发帖</p>
+          <p class="tiny">你关注了 {{ auth.user.following_count }} 人，他们发帖后会出现在这里</p>
+          <el-button round @click="sort = 'latest'">看看全站</el-button>
+        </template>
+      </div>
 
       <div v-else-if="!posts.length" class="card empty">
         食堂还没人开张，去发第一条吧
@@ -221,6 +282,38 @@ onMounted(() => void fetchPage(1, false))
   background: var(--brand);
   color: #fff;
   font-weight: 600;
+}
+
+/* 关注人数跟在 tab 后面，比单独写一行"你关注了 3 人"省地方 */
+.tab-count {
+  margin-left: 4px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* 关注流的三条空态（未登录 / 没关注人 / 关注的人没发帖）共用一套排版 */
+.follow-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 40px 20px;
+}
+
+.empty-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.follow-empty .tiny {
+  margin: 0;
+  max-width: 400px;
+  line-height: 1.7;
+}
+
+.follow-empty :deep(.el-button) {
+  margin-top: 8px;
 }
 
 .count {

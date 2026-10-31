@@ -11,11 +11,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
-from app.core.exceptions import BadRequest, Forbidden, NotFound
+from app.core.exceptions import BadRequest, Forbidden, NotFound, Unauthorized
 from app.core.titles import title_of
 from app.models.catalog import Canteen, Dish, Merchant
 from app.models.post import Comment, Like, Post
 from app.models.rating import Rating
+from app.models.social import Follow
 from app.models.user import User
 from app.schemas.post import (
     AuthorBrief,
@@ -30,8 +31,19 @@ from app.schemas.post import (
 
 SORT_LATEST = "latest"
 SORT_HOT = "hot"
+SORT_FOLLOWING = "following"
 HOT_LIMIT = 10
 HOT_WINDOW_HOURS = 24
+
+
+def _followed_author_ids(user_id: int):
+    """我关注的人的 id 子查询。
+
+    用 IN 子查询而不是 join follows：帖子表对关注关系没有多对多，
+    join 还要额外 distinct，反而更慢也更容易写错。
+    不包含我自己——「关注」就是关注别人，自己的动态在个人主页看。
+    """
+    return select(Follow.following_id).where(Follow.follower_id == user_id)
 
 
 def _base_query():
@@ -109,6 +121,7 @@ async def _count_posts(
     merchant_id: int | None = None,
     user_id: int | None = None,
     keyword: str | None = None,
+    following_of: int | None = None,
 ) -> int:
     stmt = select(func.count()).select_from(Post).join(Dish, Post.dish_id == Dish.id)
     if dish_id is not None:
@@ -119,6 +132,8 @@ async def _count_posts(
         stmt = stmt.where(Post.user_id == user_id)
     if keyword and keyword.strip():
         stmt = stmt.where(Post.content.like(f"%{keyword.strip()}%"))
+    if following_of is not None:
+        stmt = stmt.where(Post.user_id.in_(_followed_author_ids(following_of)))
     return int(await db.scalar(stmt) or 0)
 
 
@@ -134,7 +149,21 @@ async def list_posts(
     user_id: int | None = None,
     keyword: str | None = None,
 ) -> tuple[list[PostOut], int]:
-    total = await _count_posts(db, dish_id=dish_id, merchant_id=merchant_id, user_id=user_id, keyword=keyword)
+    # 关注流必须先知道"我是谁"，匿名请求拿不到关注关系，直接 401 而不是返回空列表
+    following_of: int | None = None
+    if sort == SORT_FOLLOWING:
+        if viewer is None:
+            raise Unauthorized("登录后才能看关注动态")
+        following_of = viewer.id
+
+    total = await _count_posts(
+        db,
+        dish_id=dish_id,
+        merchant_id=merchant_id,
+        user_id=user_id,
+        keyword=keyword,
+        following_of=following_of,
+    )
 
     stmt = _base_query()
     if dish_id is not None:
@@ -145,6 +174,8 @@ async def list_posts(
         stmt = stmt.where(Post.user_id == user_id)
     if keyword and keyword.strip():
         stmt = stmt.where(Post.content.like(f"%{keyword.strip()}%"))
+    if following_of is not None:
+        stmt = stmt.where(Post.user_id.in_(_followed_author_ids(following_of)))
 
     if sort == SORT_HOT:
         # 与热榜同一公式，但不限 24h，用于"最热"排序

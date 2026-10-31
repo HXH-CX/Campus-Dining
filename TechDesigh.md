@@ -67,7 +67,7 @@
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/posts` 🔒 | 发布帖子，body：`{dish_id, score(1-5), content?, images: [url]}`。事务内：写 post → **upsert rating** → 重算 dish 聚合 |
-| GET | `/posts/feed` | 信息流 `?sort=latest\|hot&page=&page_size=&keyword=`（keyword 匹配帖子文案） |
+| GET | `/posts/feed` | 信息流 `?sort=latest\|hot\|following&page=&page_size=&keyword=`（keyword 匹配帖子文案）。`following` 需登录，未登录返回 40101；只返回我关注的人（**不含我自己**）的帖子，按时间倒序，`total` 用于前端区分"没人发帖"与"没关注人" |
 | GET | `/posts/hot` | 24小时热榜 Top10（读缓存） |
 | GET | `/posts/{id}` | 帖子详情（含菜品、商家、作者、我是否点过赞） |
 | PUT | `/posts/{id}` 🔒 | 编辑自己的帖子：只接受 `content` / `images`，**不含评分与菜品**（改评分语义是重新表态，走发帖 upsert）。字段可省略，传 `null` 表示清空 |

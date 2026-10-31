@@ -2,7 +2,8 @@ import { del, get, post, put } from './request'
 import type { Comment, LikeResult, PageData, Post } from '@/types'
 
 export interface FeedQuery {
-  sort?: 'latest' | 'hot'
+  /** following 需要登录，且只返回我关注的人（不含我自己）的帖子 */
+  sort?: 'latest' | 'hot' | 'following'
   page?: number
   page_size?: number
   keyword?: string

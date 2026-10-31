@@ -171,6 +171,47 @@ def main():
     token = body["data"]["access_token"]
     need("登录返回用户", body["data"]["user"], ["id", "nickname", "title_level", "title_name", "title_emoji", "achievements"])
 
+    print("== 2.1 关注流（首页第三个 tab）")
+    status, body = call("GET", "/posts/feed?sort=following")
+    check("未登录看关注流被拒（40101）", status == 401 and body["code"] == 40101, body)
+
+    me = call("GET", "/users/me", token=token)[1]["data"]
+    status, body = call("GET", f"/users/{me['id']}/following?page_size=50", token=token)
+    followed = {item["id"] for item in body["data"]["items"]}
+    check("关注名单可读", status == 200 and bool(followed), body)
+
+    status, body = call("GET", "/posts/feed?sort=following&page_size=50", token=token)
+    data = body["data"]
+    check("关注流 200", status == 200, body)
+    check(
+        "只出现关注对象的帖子",
+        all(item["author"]["id"] in followed for item in data["items"]),
+        [item["author"]["nickname"] for item in data["items"]],
+    )
+    check(
+        "不混入自己的帖子",
+        all(item["author"]["id"] != me["id"] for item in data["items"]),
+        [item["author"]["nickname"] for item in data["items"]],
+    )
+    check("total 与返回条数一致", data["total"] == len(data["items"]), data["total"])
+
+    status, body = call("GET", "/posts/feed?sort=following&keyword=" + urllib.parse.quote("面"), token=token)
+    check(
+        "关注流也支持 keyword",
+        status == 200 and all("面" in (item["content"] or "") for item in body["data"]["items"]),
+        body,
+    )
+
+    # 谁都没关注的用户：空列表 + total 0，而不是 404（前端要据此区分"没人发帖"和"没关注人"）
+    status, body = call("POST", "/auth/login", {"username": "ada", "password": "123456"})
+    ada_token = body["data"]["access_token"]
+    status, body = call("GET", "/posts/feed?sort=following", token=ada_token)
+    check(
+        "没关注任何人时返回空列表",
+        status == 200 and body["data"]["total"] == 0 and body["data"]["items"] == [],
+        body,
+    )
+
     print("== 3. 发帖（带图片上传）")
     status, body = upload(token, "journey.png", PNG_1PX)
     check("上传图片", status == 200 and body["data"]["url"], body)
