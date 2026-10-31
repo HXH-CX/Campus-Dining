@@ -1,5 +1,5 @@
 import { get, post, put } from './request'
-import type { PageData, Post, RatingItem, User, UserCard, UserCommentItem } from '@/types'
+import type { Dish, PageData, Post, RatingItem, User, UserCard, UserCommentItem } from '@/types'
 
 export function fetchMe() {
   return get<User>('/users/me')
@@ -32,6 +32,11 @@ export function fetchFollowers(userId: number, page = 1, pageSize = 12) {
 
 export function fetchFollowing(userId: number, page = 1, pageSize = 12) {
   return get<PageData<UserCard>>(`/users/${userId}/following`, { page, page_size: pageSize })
+}
+
+/** 想吃清单：最近加的在前，已下架的菜也会返回（前端标灰） */
+export function fetchUserWants(userId: number, page = 1, pageSize = 20) {
+  return get<PageData<Dish>>(`/users/${userId}/wants`, { page, page_size: pageSize })
 }
 
 export function toggleFollow(userId: number) {

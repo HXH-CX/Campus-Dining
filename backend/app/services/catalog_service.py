@@ -12,6 +12,7 @@ from sqlalchemy.orm import noload
 from app.core.exceptions import NotFound
 from app.models.catalog import Canteen, Dish, Merchant
 from app.models.rating import Rating
+from app.models.social import Want
 from app.models.user import User
 from app.schemas.catalog import CanteenOut, DishOut, MerchantOut, RandomDishOut, RatingOut
 
@@ -63,7 +64,7 @@ async def search_dishes(
 
     total = int(await db.scalar(count_stmt) or 0)
     rows = (await db.execute(stmt.order_by(Dish.rating_count.desc(), Dish.id).offset(offset).limit(limit))).all()
-    return [_to_dish_out(d, m_name, c_name) for d, m_name, c_name in rows], total
+    return [to_dish_out(d, m_name, c_name) for d, m_name, c_name in rows], total
 
 
 async def get_canteen(db: AsyncSession, canteen_id: int) -> CanteenOut:
@@ -137,7 +138,7 @@ async def list_dishes(db: AsyncSession, merchant_id: int, include_unavailable: b
     if not include_unavailable:
         stmt = stmt.where(Dish.is_available.is_(True))
     rows = (await db.execute(stmt)).all()
-    return [_to_dish_out(d, m_name, c_name) for d, m_name, c_name in rows]
+    return [to_dish_out(d, m_name, c_name) for d, m_name, c_name in rows]
 
 
 async def top_dishes(
@@ -163,7 +164,7 @@ async def top_dishes(
         .options(noload(Dish.merchant))
     )
     rows = (await db.execute(stmt)).all()
-    return [_to_dish_out(dish, merchant_name, canteen_name) for dish, merchant_name, canteen_name in rows]
+    return [to_dish_out(dish, merchant_name, canteen_name) for dish, merchant_name, canteen_name in rows]
 
 
 async def random_dish(
@@ -172,31 +173,43 @@ async def random_dish(
     min_rating: float = 4.0,
     min_count: int = 2,
     exclude_id: int | None = None,
+    wanted_by: int | None = None,
 ) -> RandomDishOut:
     """「今天吃什么」：随机抽一道菜。
 
-    先在高分池里抽（够分 + 够人评），池子空时退回全部在售菜品。
+    默认先在高分池里抽（够分 + 够人评），池子空时退回全部在售菜品。
     为什么不只在高分池里抽：数据少的时候会直接抽不出来，
     对"选择困难"的人来说，抽不出来比抽到一道没人评过的菜更让人放弃。
+
+    wanted_by 给「从想吃里抽」用：只在这份清单里挑，不做任何回退——
+    用户自己挑的池子就该被尊重，抽不到时前端引导去加菜，而不是偷偷塞一道别的。
 
     exclude_id 用来支撑「换一个」：刚抽到的那道不再进候选，
     除非池子里只剩它（否则会 404，还不如把同一道菜再端上来）。
     """
-    qualified = [
-        Dish.is_available.is_(True),
-        Dish.rating_count >= min_count,
-        Dish.avg_rating >= min_rating,
-    ]
-    available = [Dish.is_available.is_(True)]
+    if wanted_by is not None:
+        want_ids = select(Want.dish_id).where(Want.user_id == wanted_by)
+        # 下架的菜不能出现在结果里：清单是历史，抽签要能真去吃
+        body = [Dish.is_available.is_(True), Dish.id.in_(want_ids)]
+        attempts: list[tuple[list, str]] = [(body + [Dish.id != exclude_id], "wants")] if exclude_id else []
+        attempts.append((body, "wants"))
+        empty_message = "想吃清单还是空的，先去挑几道"
+    else:
+        qualified = [
+            Dish.is_available.is_(True),
+            Dish.rating_count >= min_count,
+            Dish.avg_rating >= min_rating,
+        ]
+        available = [Dish.is_available.is_(True)]
+        attempts = []
+        if exclude_id is not None:
+            attempts.append((qualified + [Dish.id != exclude_id], "top"))
+            attempts.append((available + [Dish.id != exclude_id], "all"))
+        attempts.append((qualified, "top"))
+        attempts.append((available, "all"))
+        empty_message = "还没有可供选择的菜品"
 
-    attempts: list[tuple[list, bool]] = []
-    if exclude_id is not None:
-        attempts.append((qualified + [Dish.id != exclude_id], True))
-        attempts.append((available + [Dish.id != exclude_id], False))
-    attempts.append((qualified, True))
-    attempts.append((available, False))
-
-    for conditions, from_top in attempts:
+    for conditions, source in attempts:
         stmt = (
             select(Dish, Merchant.name, Canteen.name)
             .join(Merchant, Dish.merchant_id == Merchant.id)
@@ -213,15 +226,22 @@ async def random_dish(
             continue
         dish, merchant_name, canteen_name = row
         return RandomDishOut(
-            dish=_to_dish_out(dish, merchant_name, canteen_name),
+            dish=to_dish_out(dish, merchant_name, canteen_name),
             pool_size=pool,
-            from_top=from_top,
+            source=source,
         )
 
-    raise NotFound("还没有可供选择的菜品")
+    raise NotFound(empty_message)
 
 
-async def get_dish(db: AsyncSession, dish_id: int) -> DishOut:
+async def get_dish(
+    db: AsyncSession, dish_id: int, viewer_id: int | None = None, with_want: bool = False
+) -> DishOut:
+    """菜品详情。
+
+    with_want 只在详情页开：想吃人数要单独 COUNT，后台列表一次查 20 个菜品时
+    没必要逐个计数（那里也不展示这个字段）。
+    """
     stmt = (
         select(Dish, Merchant.name, Canteen.name)
         .join(Merchant, Dish.merchant_id == Merchant.id)
@@ -233,7 +253,15 @@ async def get_dish(db: AsyncSession, dish_id: int) -> DishOut:
     if row is None:
         raise NotFound("菜品不存在")
     dish, merchant_name, canteen_name = row
-    return _to_dish_out(dish, merchant_name, canteen_name)
+    out = to_dish_out(dish, merchant_name, canteen_name)
+
+    if with_want:
+        from app.services import want_service  # 局部导入：want_service 反向依赖 to_dish_out
+
+        want_count, is_wanted = await want_service.state_of(db, dish_id, viewer_id)
+        out.want_count = want_count
+        out.is_wanted = is_wanted
+    return out
 
 
 async def list_dish_ratings(
@@ -258,7 +286,7 @@ async def list_dish_ratings(
     return items, int(total or 0)
 
 
-def _to_dish_out(dish: Dish, merchant_name: str, canteen_name: str) -> DishOut:
+def to_dish_out(dish: Dish, merchant_name: str, canteen_name: str) -> DishOut:
     return DishOut(
         id=dish.id,
         name=dish.name,

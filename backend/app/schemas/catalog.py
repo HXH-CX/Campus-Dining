@@ -1,6 +1,7 @@
 """食堂 / 商家 / 菜品相关的请求与响应模型。"""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -33,6 +34,14 @@ class DishOut(BaseModel):
     avg_rating: float
     rating_count: int
     is_available: bool
+    # 想吃清单相关：只有菜品详情会填真值，列表接口留默认值（列表不展示这两个字段）
+    want_count: int = 0
+    is_wanted: bool = False
+
+
+class WantResult(BaseModel):
+    wanted: bool = Field(description="操作后是否在清单里")
+    want_count: int = Field(description="该菜品当前有多少人想吃")
 
 
 class RandomDishOut(BaseModel):
@@ -40,7 +49,9 @@ class RandomDishOut(BaseModel):
 
     dish: DishOut
     pool_size: int = Field(description="本次抽取的候选池大小，1 表示没得换")
-    from_top: bool = Field(description="是否来自高分池（够分且够人评）")
+    source: Literal["top", "all", "wants"] = Field(
+        description="候选池来源：top 高分池 / all 全部在售 / wants 我的想吃清单"
+    )
 
 
 class DishBrief(BaseModel):

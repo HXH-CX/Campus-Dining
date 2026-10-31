@@ -6,7 +6,7 @@
 - 帖子的展示分数 = 作者对该菜的**当前**评分，所以可能随作者再次发帖而变化。
 """
 
-from sqlalchemy import and_, case, func, select, text, update
+from sqlalchemy import and_, case, delete, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
@@ -16,7 +16,7 @@ from app.core.titles import title_of
 from app.models.catalog import Canteen, Dish, Merchant
 from app.models.post import Comment, Like, Post
 from app.models.rating import Rating
-from app.models.social import Follow
+from app.models.social import Follow, Want
 from app.models.user import User
 from app.schemas.post import (
     AuthorBrief,
@@ -214,6 +214,9 @@ async def create_post(db: AsyncSession, user: User, payload: PostCreate) -> Post
 
     await _upsert_rating(db, user.id, dish.id, payload.score)
     await _recalc_dish(db, dish.id)
+
+    # 吃过就不算"想吃"了：发帖即从自己的清单里划掉，省一次手动清理
+    await db.execute(delete(Want).where(Want.user_id == user.id, Want.dish_id == dish.id))
 
     await db.commit()
     return await get_post(db, post.id, viewer=user)

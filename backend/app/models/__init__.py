@@ -6,7 +6,7 @@ Alembic 的 env.py 只 import 本模块，即可保证 Base.metadata 里注册�
 from app.models.catalog import Canteen, Dish, Merchant
 from app.models.post import Comment, Like, Post
 from app.models.rating import Rating
-from app.models.social import Follow, UserAchievement
+from app.models.social import Follow, UserAchievement, Want
 from app.models.user import User
 
 __all__ = [
@@ -20,4 +20,5 @@ __all__ = [
     "Rating",
     "User",
     "UserAchievement",
+    "Want",
 ]

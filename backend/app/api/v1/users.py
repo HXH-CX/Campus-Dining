@@ -6,9 +6,10 @@ from app.api.deps import CurrentUser, DbSession, OptionalUser, Paging
 from app.core.exceptions import NotFound
 from app.core.response import ApiResponse, PageData, ok, paginated
 from app.models.user import User
+from app.schemas.catalog import DishOut
 from app.schemas.post import PostOut
 from app.schemas.user import UserCard, UserCommentOut, UserOut, UserRatingOut, UserUpdate
-from app.services import post_service, social_service, title_service, user_service
+from app.services import post_service, social_service, title_service, user_service, want_service
 from app.services.user_service import to_user_out
 
 router = APIRouter(prefix="/users", tags=["用户"])
@@ -62,6 +63,16 @@ async def user_ratings(user_id: int, db: DbSession, paging: Paging):
 )
 async def user_comments(user_id: int, db: DbSession, paging: Paging):
     items, total = await social_service.list_user_comments(db, user_id, paging.offset, paging.limit)
+    return paginated(items, total, paging.page, paging.page_size)
+
+
+@router.get(
+    "/{user_id}/wants",
+    response_model=ApiResponse[PageData[DishOut]],
+    summary="想吃清单（最近加的在前）",
+)
+async def user_wants(user_id: int, db: DbSession, paging: Paging):
+    items, total = await want_service.list_wants(db, user_id, paging.offset, paging.limit)
     return paginated(items, total, paging.page, paging.page_size)
 
 

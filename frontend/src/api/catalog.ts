@@ -1,5 +1,5 @@
-import { get } from './request'
-import type { Canteen, Dish, Merchant, PageData, RandomDishResult } from '@/types'
+import { get, post } from './request'
+import type { Canteen, Dish, Merchant, PageData, RandomDishResult, WantResult } from '@/types'
 
 export function fetchCanteens() {
   return get<Canteen[]>('/canteens')
@@ -27,8 +27,20 @@ export function fetchTopDishes(params: { min_rating?: number; min_count?: number
 }
 
 /** 随机抽一道菜（今天吃什么）；exclude_id 用于「换一个」避开刚抽到的那道 */
-export function fetchRandomDish(params: { exclude_id?: number; min_rating?: number; min_count?: number } = {}) {
+export function fetchRandomDish(
+  params: {
+    source?: 'auto' | 'wants'
+    exclude_id?: number
+    min_rating?: number
+    min_count?: number
+  } = {},
+) {
   return get<RandomDishResult>('/dishes/random', { ...params })
+}
+
+/** 加入 / 移出想吃清单（同一个接口，看当前状态翻转） */
+export function toggleWant(dishId: number) {
+  return post<WantResult>(`/dishes/${dishId}/want`)
 }
 
 /** 按菜名或商家名模糊搜索；keyword 为空则返回全部上架菜品 */

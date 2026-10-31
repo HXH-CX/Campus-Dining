@@ -58,8 +58,10 @@
 | GET | `/merchants/{id}/posts` | 该商家下所有帖子的分页流 |
 | GET | `/dishes` | 菜品搜索：`?keyword=` 按菜名**或商家名**模糊匹配，只返回上架菜品；留空返回全部 |
 | GET | `/dishes/top` | 高分榜：`?min_rating=4&min_count=2&limit=6`，只取上架菜品，按均分倒序、同分看评价数。**必须注册在 `/dishes/{id}` 之前**，否则会被路径参数吞掉（返回 422） |
-| GET | `/dishes/random` | 随机抽一道菜（今天吃什么）：`?exclude_id=` 避开刚抽到的那道。先在高分池里抽，池空时回退到全部上架菜品，返回 `{dish, pool_size, from_top}`。同样**必须注册在 `/dishes/{id}` 之前** |
-| GET | `/dishes/{id}` | 菜品详情（含所属商家、食堂） |
+| GET | `/dishes/random` | 随机抽一道菜（今天吃什么）：`?source=auto\|wants&exclude_id=`。`auto`（默认）先在高分池里抽、池空回退到全部上架菜品；`wants` 只在当前用户的想吃清单里抽（需登录，清单为空返回 404，**不回退**）。返回 `{dish, pool_size, source}`。同样**必须注册在 `/dishes/{id}` 之前** |
+| GET | `/dishes/{id}` | 菜品详情（含所属商家、食堂，以及 `want_count` / `is_wanted`） |
+| POST | `/dishes/{id}/want` 🔒 | 加入 / 移出想吃清单（幂等翻转），返回 `{wanted, want_count}`；已下架菜品拒绝加入（40001） |
+| GET | `/users/{id}/wants` | 某人的想吃清单（分页，最近加的在前；已下架的菜仍返回，由前端标记） |
 | GET | `/dishes/{id}/posts` | 该菜品的帖子分页流 |
 | GET | `/dishes/{id}/ratings` | 该菜品的打分记录（分页，返回昵称/头像/星级/时间） |
 
@@ -229,6 +231,17 @@ CREATE TABLE follows (
     KEY idx_following (following_id),
     CONSTRAINT fk_follow_follower FOREIGN KEY (follower_id) REFERENCES users(id),
     CONSTRAINT fk_follow_following FOREIGN KEY (following_id) REFERENCES users(id)
+);
+
+-- 想吃清单（一人一菜一条；纯标记，不影响评分）
+CREATE TABLE wants (
+    user_id BIGINT NOT NULL,
+    dish_id BIGINT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, dish_id),
+    KEY idx_wants_dish (dish_id),
+    CONSTRAINT fk_want_user FOREIGN KEY (user_id) REFERENCES users(id),
+    CONSTRAINT fk_want_dish FOREIGN KEY (dish_id) REFERENCES dishes(id)
 );
 ```
 

@@ -1,11 +1,14 @@
 """食堂 / 商家 / 菜品 的公开只读接口（无需登录）。"""
 
+from typing import Literal
+
 from fastapi import APIRouter, Query
 
-from app.api.deps import DbSession, Paging
+from app.api.deps import CurrentUser, DbSession, OptionalUser, Paging
+from app.core.exceptions import Unauthorized
 from app.core.response import ApiResponse, PageData, ok, paginated
-from app.schemas.catalog import CanteenOut, DishOut, MerchantOut, RandomDishOut, RatingOut
-from app.services import catalog_service
+from app.schemas.catalog import CanteenOut, DishOut, MerchantOut, RandomDishOut, RatingOut, WantResult
+from app.services import catalog_service, want_service
 
 router = APIRouter(tags=["食堂与菜品"])
 
@@ -72,16 +75,43 @@ async def top_dishes(
 )
 async def random_dish(
     db: DbSession,
+    viewer: OptionalUser,
+    source: Literal["auto", "wants"] = Query("auto", description="auto 高分池优先 / wants 只在我的想吃清单里抽"),
     min_rating: float = Query(4.0, ge=0, le=5, description="高分池的均分门槛"),
     min_count: int = Query(2, ge=1, le=100, description="高分池的最少评价人数"),
     exclude_id: int | None = Query(None, ge=1, description="想避开的菜品 id（「换一个」时传当前这道）"),
 ):
-    return ok(await catalog_service.random_dish(db, min_rating=min_rating, min_count=min_count, exclude_id=exclude_id))
+    wanted_by = None
+    if source == "wants":
+        if viewer is None:
+            raise Unauthorized("登录后才能从想吃清单里抽")
+        wanted_by = viewer.id
+    return ok(
+        await catalog_service.random_dish(
+            db,
+            min_rating=min_rating,
+            min_count=min_count,
+            exclude_id=exclude_id,
+            wanted_by=wanted_by,
+        )
+    )
 
 
 @router.get("/dishes/{dish_id}", response_model=ApiResponse[DishOut], summary="菜品详情")
-async def get_dish(dish_id: int, db: DbSession):
-    return ok(await catalog_service.get_dish(db, dish_id))
+async def get_dish(dish_id: int, db: DbSession, viewer: OptionalUser):
+    return ok(
+        await catalog_service.get_dish(db, dish_id, viewer_id=viewer.id if viewer else None, with_want=True)
+    )
+
+
+@router.post(
+    "/dishes/{dish_id}/want",
+    response_model=ApiResponse[WantResult],
+    summary="加入 / 移出想吃清单",
+)
+async def toggle_want(dish_id: int, db: DbSession, current: CurrentUser):
+    wanted, want_count = await want_service.toggle(db, current, dish_id)
+    return ok(WantResult(wanted=wanted, want_count=want_count))
 
 
 @router.get(

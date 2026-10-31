@@ -231,8 +231,15 @@ def main():
     status, body = call("GET", f"/merchants/{tmp_merchant}/dishes")
     check("下架后公开列表不可见", status == 200 and body["data"] == [], body)
 
+    # 想吃清单：下架的菜不让加（和发帖同口径），但想吃记录不算"引用"，不该挡住管理员删菜品
+    status, body = call("POST", f"/dishes/{tmp_dish}/want", token=admin)
+    check("下架菜品不能加入想吃", status == 400 and body["code"] == 40001, body)
+    call("PATCH", f"/admin/dishes/{tmp_dish}/availability", {"is_available": True}, token=admin)
+    status, body = call("POST", f"/dishes/{tmp_dish}/want", token=admin)
+    check("上架后可以想吃", status == 200 and body["data"]["wanted"] is True, body)
+
     status, _ = call("DELETE", f"/admin/dishes/{tmp_dish}", token=admin)
-    check("未被引用菜品可删", status == 200, status)
+    check("未被引用菜品可删（想吃记录一并清掉）", status == 200, status)
     call("DELETE", f"/admin/merchants/{tmp_merchant}", token=admin)
     call("DELETE", f"/admin/canteens/{tmp_canteen}", token=admin)
 

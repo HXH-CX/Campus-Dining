@@ -27,6 +27,24 @@ class Follow(Base, CreatedAtMixin):
     )
 
 
+class Want(Base, CreatedAtMixin):
+    """想吃清单：一人一菜一条，纯标记。
+
+    不影响评分，也不代表"吃过"——它的用途是给"今天吃什么"提供一份
+    由本人挑过的候选池，抽中了再决定去不去。
+    """
+
+    __tablename__ = "wants"
+    __table_args__ = (Index("idx_wants_dish", "dish_id"),)
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", name="fk_want_user"), primary_key=True
+    )
+    dish_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("dishes.id", name="fk_want_dish"), primary_key=True
+    )
+
+
 class UserAchievement(Base):
     """隐藏成就，与等级称号并存展示（如"食堂扫地僧 + 纯爱战神"）。一次性解锁，永久保留。"""
 

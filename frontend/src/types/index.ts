@@ -72,6 +72,9 @@ export interface Dish {
   avg_rating: number
   rating_count: number
   is_available: boolean
+  /** 只有菜品详情接口会填真值，列表接口为 0 */
+  want_count?: number
+  is_wanted?: boolean
 }
 
 export interface DishBrief {
@@ -87,8 +90,14 @@ export interface RandomDishResult {
   dish: Dish
   /** 本次候选池大小，1 表示没得换 */
   pool_size: number
-  /** 是否来自高分池（够分且够人评） */
-  from_top: boolean
+  /** top 高分池 / all 全部在售 / wants 我的想吃清单 */
+  source: 'top' | 'all' | 'wants'
+}
+
+/** 想吃清单的操作结果 */
+export interface WantResult {
+  wanted: boolean
+  want_count: number
 }
 
 export interface AuthorBrief {

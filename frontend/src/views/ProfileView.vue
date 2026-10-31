@@ -3,7 +3,8 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { UploadRequestOptions, UploadUserFile } from 'element-plus'
 import { ElMessage } from '@/utils/feedback'
-import { fetchFollowers, fetchFollowing, fetchUser, fetchUserComments, fetchUserPosts, fetchUserRatings, toggleFollow, updateMe } from '@/api/user'
+import { fetchFollowers, fetchFollowing, fetchUser, fetchUserComments, fetchUserPosts, fetchUserRatings, fetchUserWants, toggleFollow, updateMe } from '@/api/user'
+import { toggleWant } from '@/api/catalog'
 import { deleteComment } from '@/api/post'
 import { isNotFound } from '@/api/request'
 import { uploadImage } from '@/api/upload'
@@ -13,7 +14,7 @@ import RatingStars from '@/components/RatingStars.vue'
 import AppSkeleton from '@/components/AppSkeleton.vue'
 import ErrorState from '@/components/ErrorState.vue'
 import { formatDate, timeAgo } from '@/utils/format'
-import type { Post, RatingItem, User, UserCard, UserCommentItem } from '@/types'
+import type { Dish, Post, RatingItem, User, UserCard, UserCommentItem } from '@/types'
 
 const props = defineProps<{ id?: string }>()
 const router = useRouter()
@@ -25,9 +26,15 @@ const ratings = ref<RatingItem[]>([])
 const comments = ref<UserCommentItem[]>([])
 const followers = ref<UserCard[]>([])
 const following = ref<UserCard[]>([])
+// 想吃清单按需加载：不是每个访客都会点这个 tab，没必要跟着首屏一起请求
+const wants = ref<Dish[]>([])
+const wantsLoaded = ref(false)
+const wantsLoading = ref(false)
+const wantsTotal = ref(0)
+const wantRemoving = ref<number | null>(null)
 // 计数用后端返回的 total，而不是当前页条数
 const totals = ref({ posts: 0, ratings: 0, comments: 0, followers: 0, following: 0 })
-const tab = ref<'posts' | 'ratings' | 'comments' | 'following' | 'followers'>('posts')
+const tab = ref<'posts' | 'ratings' | 'wants' | 'comments' | 'following' | 'followers'>('posts')
 const loading = ref(true)
 const error = ref<unknown>(null)
 const removing = ref<number | null>(null)
@@ -72,7 +79,17 @@ async function load(): Promise<void> {
   }
 }
 
-watch(() => props.id, load, { immediate: true })
+watch(
+  () => props.id,
+  () => {
+    // 换人就把上一个人的清单丢掉，避免 tab 里闪一下别人的菜
+    wants.value = []
+    wantsLoaded.value = false
+    wantsTotal.value = 0
+    void load()
+  },
+  { immediate: true },
+)
 
 // /me 路由下依赖 auth.user 才能拿到 id
 watch(
@@ -107,6 +124,42 @@ function onDeleted(id: number): void {
 
 function goPost(postId: number): void {
   router.push({ name: 'post', params: { id: postId } })
+}
+
+async function loadWants(): Promise<void> {
+  if (!userId.value) return
+  wantsLoading.value = true
+  try {
+    const data = await fetchUserWants(userId.value, 1, 30)
+    wants.value = data.items
+    wantsTotal.value = data.total
+    wantsLoaded.value = true
+  } finally {
+    wantsLoading.value = false
+  }
+}
+
+// 想吃清单懒加载：只有真的点开这个 tab 才请求
+watch(tab, (next) => {
+  if (next === 'wants' && !wantsLoaded.value) void loadWants()
+})
+
+/** 移除想吃：这个 tab 里只给本人显示按钮，别人的清单只看不改 */
+async function removeWant(dish: Dish): Promise<void> {
+  if (wantRemoving.value) return
+  wantRemoving.value = dish.id
+  try {
+    const result = await toggleWant(dish.id)
+    if (!result.wanted) {
+      wants.value = wants.value.filter((item) => item.id !== dish.id)
+      wantsTotal.value = Math.max(0, wantsTotal.value - 1)
+      ElMessage.success('已移出想吃清单')
+    }
+  } catch {
+    // 拦截器已提示
+  } finally {
+    wantRemoving.value = null
+  }
 }
 
 /** 删除自己的评论。这里只是入口之一，同一接口在详情页/评论弹窗也能用 */
@@ -239,6 +292,44 @@ async function saveProfile(): Promise<void> {
               </div>
               <RatingStars :value="item.score" show-score />
               <span class="tiny">{{ timeAgo(item.updated_at) }}</span>
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane :label="`想吃${wantsLoaded ? ' ' + wantsTotal : ''}`" name="wants">
+          <AppSkeleton v-if="wantsLoading" variant="row" :count="3" />
+
+          <div v-else-if="!wants.length" class="card empty">
+            <template v-if="isSelf">清单还是空的，去菜品页点「想吃」攒几道</template>
+            <template v-else>{{ user?.nickname }} 还没有想吃的东西</template>
+          </div>
+
+          <div v-else class="card">
+            <div
+              v-for="dish in wants"
+              :key="dish.id"
+              class="rating-item"
+              @click="router.push({ name: 'dish', params: { id: dish.id } })"
+            >
+              <img v-if="dish.image_url" :src="dish.image_url" class="thumb" :alt="dish.name" />
+              <span v-else class="thumb img-fallback">{{ dish.name.slice(0, 1) }}</span>
+
+              <div class="r-body">
+                <div class="r-name">
+                  {{ dish.name }}
+                  <span v-if="!dish.is_available" class="w-off">已下架</span>
+                </div>
+                <div class="tiny">{{ dish.merchant_name }} · {{ dish.canteen_name }}</div>
+              </div>
+
+              <div class="w-score">
+                <b>{{ dish.avg_rating ? dish.avg_rating.toFixed(1) : '—' }}</b>
+                <div class="tiny">{{ dish.rating_count }} 人评</div>
+              </div>
+
+              <button v-if="isSelf" class="c-del" :disabled="wantRemoving === dish.id" @click.stop="removeWant(dish)">
+                移除
+              </button>
             </div>
           </div>
         </el-tab-pane>
@@ -515,6 +606,29 @@ h1 {
 
 .r-name {
   font-weight: 600;
+}
+
+/* 想吃项右侧的评分列：不需要星级，只给个均分和人数 */
+.w-score {
+  text-align: right;
+  flex-shrink: 0;
+  min-width: 54px;
+}
+
+.w-score b {
+  color: var(--brand-dark);
+  font-size: 15px;
+}
+
+/* 下架标记：清单是历史，菜可能已经没了，得让用户看出来 */
+.w-off {
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-3);
+  border: 1px solid var(--line);
+  border-radius: 999px;
 }
 
 .u-name {

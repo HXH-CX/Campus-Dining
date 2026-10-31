@@ -4,13 +4,14 @@
 不靠数据库外键报 500 给前端看。菜品被引用后只允许下架，不物理删除。
 """
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import Conflict, NotFound
 from app.models.catalog import Canteen, Dish, Merchant
 from app.models.post import Post
 from app.models.rating import Rating
+from app.models.social import Want
 from app.schemas.catalog import (
     CanteenCreate,
     CanteenOut,
@@ -208,6 +209,8 @@ async def delete_dish(db: AsyncSession, dish_id: int) -> None:
         raise Conflict(
             f"该菜品已有 {post_count} 条帖子、{rating_count} 条评分引用，无法物理删除；请改为下架"
         )
+    # 想吃只是"还没去吃"的标记，不算内容引用：一并清掉，不拿它挡管理员
+    await db.execute(delete(Want).where(Want.dish_id == dish_id))
     await db.delete(dish)
     await db.commit()
 

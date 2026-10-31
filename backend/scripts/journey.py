@@ -135,7 +135,7 @@ def main():
     print("== 1.2 随机一顿（今天吃什么）")
     status, body = call("GET", "/dishes/random")
     check("随机抽取 200", status == 200, body)
-    need("随机结果字段", body["data"], ["dish", "pool_size", "from_top"])
+    need("随机结果字段", body["data"], ["dish", "pool_size", "source"])
     pick = body["data"]
     need(
         "随机菜品字段（弹窗要用）",
@@ -144,7 +144,7 @@ def main():
     )
     check(
         "默认从高分池里抽",
-        pick["from_top"] is True and pick["pool_size"] >= 1 and pick["dish"]["rating_count"] >= 2,
+        pick["source"] == "top" and pick["pool_size"] >= 1 and pick["dish"]["rating_count"] >= 2,
         pick,
     )
 
@@ -158,7 +158,7 @@ def main():
     status, body = call("GET", "/dishes/random?min_count=99")
     check(
         "高分池空时回退到全部在售菜品",
-        status == 200 and body["data"]["from_top"] is False and body["data"]["pool_size"] >= 2,
+        status == 200 and body["data"]["source"] == "all" and body["data"]["pool_size"] >= 2,
         body,
     )
 
@@ -212,6 +212,66 @@ def main():
         body,
     )
 
+    print("== 2.2 想吃清单（存 → 抽 → 吃 → 评 的第一步）")
+    status, body = call("POST", f"/dishes/{dish_id}/want")
+    check("未登录不能想吃", status == 401 and body["code"] == 40101, body)
+
+    status, body = call("POST", "/dishes/999999/want", token=token)
+    check("想吃不存在的菜 404", status == 404, body)
+
+    status, body = call("GET", f"/dishes/{dish_id}", token=token)
+    need("菜品详情带想吃字段", body["data"], ["want_count", "is_wanted"])
+    check("默认未想过", body["data"]["is_wanted"] is False, body["data"])
+
+    status, body = call("POST", f"/dishes/{dish_id}/want", token=token)
+    check("加入想吃", status == 200 and body["data"]["wanted"] is True, body)
+    want_count_after = body["data"]["want_count"]
+
+    status, body = call("GET", f"/dishes/{dish_id}", token=token)
+    check(
+        "详情回显已想吃",
+        body["data"]["is_wanted"] is True and body["data"]["want_count"] == want_count_after,
+        body["data"],
+    )
+
+    status, body = call("GET", f"/users/{me['id']}/wants?page_size=50", token=token)
+    check("清单里有刚加的菜", status == 200 and any(d["id"] == dish_id for d in body["data"]["items"]), body)
+    need(
+        "清单项字段（列表要渲染）",
+        body["data"]["items"][0],
+        ["id", "name", "image_url", "merchant_name", "canteen_name", "avg_rating", "rating_count", "is_available"],
+    )
+    want_ids = {d["id"] for d in body["data"]["items"]}
+
+    status, body = call("GET", "/dishes/random?source=wants", token=token)
+    check("从想吃里抽 200", status == 200 and body["data"]["source"] == "wants", body)
+    check("抽到的菜确实在清单里", body["data"]["dish"]["id"] in want_ids, body["data"]["dish"])
+    check(
+        "候选池大小等于清单条数",
+        body["data"]["pool_size"] == len(want_ids),
+        (body["data"]["pool_size"], len(want_ids)),
+    )
+
+    status, body = call("GET", "/users/999999/wants")
+    check("看不存在用户的清单 404", status == 404, body)
+
+    # 空清单：不偷偷回退到全站，让前端引导去加菜
+    status, body = call("POST", "/auth/login", {"username": "kiki", "password": "123456"})
+    kiki_token = body["data"]["access_token"]
+    status, body = call("GET", "/dishes/random?source=wants", token=kiki_token)
+    check("清单为空时 404 而不是换池子", status == 404, body)
+    status, body = call("GET", "/dishes/random?source=wants")
+    check("未登录从想吃抽被拒", status == 401, body)
+
+    # 撤回：再点一次就是移出，计数回到原值
+    status, body = call("POST", f"/dishes/{dish_id}/want", token=token)
+    check("再点一次移出清单", status == 200 and body["data"]["wanted"] is False, body)
+    check("移出后计数 -1", body["data"]["want_count"] == want_count_after - 1, body)
+    status, body = call("GET", f"/dishes/{dish_id}", token=token)
+    check("详情回到未想吃", body["data"]["is_wanted"] is False, body["data"])
+    status, body = call("GET", f"/dishes/{dish_id}")
+    check("想吃不影响评分聚合", body["data"]["rating_count"] == count_before, body["data"])
+
     print("== 3. 发帖（带图片上传）")
     status, body = upload(token, "journey.png", PNG_1PX)
     check("上传图片", status == 200 and body["data"]["url"], body)
@@ -219,6 +279,12 @@ def main():
 
     # 用作者已有评分（5 星）覆盖，保证菜品聚合不变，跑完不留痕迹
     detail = call("GET", f"/dishes/{dish_id}")[1]["data"]
+
+    # 先加进想吃清单：发帖即"吃过了"，下面验证清单会被自动划掉
+    status, body = call("POST", f"/dishes/{dish_id}/want", token=token)
+    check("发帖前加入想吃", status == 200 and body["data"]["wanted"] is True, body)
+    want_before_post = body["data"]["want_count"]
+
     status, body = call(
         "POST",
         "/posts",
@@ -237,6 +303,10 @@ def main():
     need("帖子菜品字段", post["dish"], ["id", "name", "image_url", "avg_rating", "rating_count"])
     need("帖子商家字段", post["merchant"], ["id", "name", "canteen_name"])
     check("图片回显", post["images"] == [image_url], post["images"])
+
+    status, body = call("GET", f"/dishes/{dish_id}", token=token)
+    check("发帖后自动移出想吃清单", body["data"]["is_wanted"] is False, body["data"])
+    check("想吃人数随之 -1", body["data"]["want_count"] == want_before_post - 1, body["data"])
 
     status, body = call("GET", f"/dishes/{dish_id}")
     check(

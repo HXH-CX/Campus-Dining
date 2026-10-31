@@ -1,18 +1,21 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchDish, fetchDishRatings } from '@/api/catalog'
+import { ElMessage } from '@/utils/feedback'
+import { fetchDish, fetchDishRatings, toggleWant } from '@/api/catalog'
 import { fetchDishPosts } from '@/api/post'
 import { isNotFound } from '@/api/request'
 import PostCard from '@/components/PostCard.vue'
 import RatingStars from '@/components/RatingStars.vue'
 import AppSkeleton from '@/components/AppSkeleton.vue'
 import ErrorState from '@/components/ErrorState.vue'
+import { useAuthStore } from '@/stores/auth'
 import { timeAgo } from '@/utils/format'
 import type { Dish, Post } from '@/types'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
+const auth = useAuthStore()
 
 const dish = ref<Dish | null>(null)
 const posts = ref<Post[]>([])
@@ -24,6 +27,28 @@ const tab = ref<'posts' | 'ratings'>('posts')
 const loading = ref(true)
 const postLoading = ref(false)
 const error = ref<unknown>(null)
+const wanting = ref(false)
+
+/** 想吃：一个接口翻转状态，返回最新的想吃人数，不需要前端猜 */
+async function handleWant(): Promise<void> {
+  if (!dish.value || wanting.value) return
+  if (!auth.isLoggedIn) {
+    ElMessage.warning('登录后才能加入想吃清单')
+    router.push({ name: 'login', query: { redirect: router.currentRoute.value.fullPath } })
+    return
+  }
+  wanting.value = true
+  try {
+    const result = await toggleWant(dish.value.id)
+    dish.value.is_wanted = result.wanted
+    dish.value.want_count = result.want_count
+    ElMessage.success(result.wanted ? '已加入想吃清单' : '已移出想吃清单')
+  } catch {
+    // 拦截器已提示
+  } finally {
+    wanting.value = false
+  }
+}
 
 const dishId = computed(() => Number(props.id))
 
@@ -114,14 +139,20 @@ function onDeleted(id: number): void {
           <el-tag v-if="!dish.is_available" type="info" size="small">已下架</el-tag>
         </div>
 
-        <el-button
-          v-if="dish.is_available"
-          type="primary"
-          round
-          @click="router.push({ name: 'create', query: { dish_id: dish.id } })"
-        >
-          我也来评一句
-        </el-button>
+        <div class="acts">
+          <el-button round class="want-btn" :class="{ on: dish.is_wanted }" :loading="wanting" @click="handleWant">
+            {{ dish.is_wanted ? '已想吃' : '想吃' }}
+            <span v-if="dish.want_count" class="want-count">{{ dish.want_count }}</span>
+          </el-button>
+          <el-button
+            v-if="dish.is_available"
+            type="primary"
+            round
+            @click="router.push({ name: 'create', query: { dish_id: dish.id } })"
+          >
+            我也来评一句
+          </el-button>
+        </div>
       </header>
 
       <el-tabs v-model="tab" class="tabs">
@@ -172,6 +203,46 @@ function onDeleted(id: number): void {
 
 .info {
   flex: 1;
+  min-width: 0;
+}
+
+.acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Element Plus 给相邻按钮加 margin-left，这里已经用 gap，去掉避免间距翻倍 */
+.acts :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+/* 已想吃用浅底强调：不抢主按钮（我也来评一句）的视觉权重 */
+.want-btn.on {
+  color: var(--brand-dark);
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.want-count {
+  margin-left: 6px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+@media (max-width: 560px) {
+  .header {
+    flex-wrap: wrap;
+  }
+
+  .acts {
+    width: 100%;
+  }
+
+  .acts :deep(.el-button) {
+    flex: 1;
+  }
 }
 
 h1 {
@@ -191,6 +262,8 @@ h1 {
   font-weight: 800;
   color: var(--brand-dark);
   line-height: 1;
+  /* 窄屏下 "暂无" 会被挤成竖排两个字，锁死不换行 */
+  white-space: nowrap;
 }
 
 .tabs {

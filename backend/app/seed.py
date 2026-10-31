@@ -4,7 +4,7 @@
     python -m app.seed            # 幂等：已存在就跳过，可重复执行
     python -m app.seed --reset    # 先清空业务表再重建（不动表结构）
 
-内容：2 个食堂 / 6 个商家 / 20 个菜品 / 9 个用户（1 管理员 + 8 学生）
+内容：2 个食堂 / 6 个商家 / 20 个菜品 / 9 个用户（1 管理员 + 8 学生）/ 若干想吃记录
      + 一批评分、帖子、点赞、评论、关注，让首页和热榜一打开就有梯度。
 数据全部写死、不用随机数，方便对着截图复现问题。
 """
@@ -22,7 +22,7 @@ from app.db.session import session_scope
 from app.models.catalog import Canteen, Dish, Merchant
 from app.models.post import Comment, Like, Post
 from app.models.rating import Rating
-from app.models.social import Follow
+from app.models.social import Follow, Want
 from app.models.user import User
 
 # ---------------------------------------------------------------- 封面图
@@ -150,6 +150,20 @@ RATINGS = [
     ("kiki", "炖罐", 4),
 ]
 
+# 想吃清单：(用户, 菜品)。挑的都是本人没评过的菜——想吃本来就该是"还没去吃"的东西
+WANTS = [
+    ("xiaoming", "蒸饺"),
+    ("xiaoming", "拌面"),
+    ("xiaoming", "辣子鸡"),
+    ("xiaoming", "三明治"),
+    ("xiaohong", "炒面片"),
+    ("xiaohong", "红烧肉饭"),
+    ("lanzhou_only", "番茄麻辣烫"),
+    ("ada", "招牌卤肉饭"),
+    ("ada", "鸡胸沙拉"),
+]
+
+
 # 帖子：(作者, 菜品, 文案, 目标点赞数)
 # 点赞数受用户总数限制（不能自己赞自己），最多 8；数值都落在可达范围内
 POSTS = [
@@ -189,6 +203,7 @@ async def reset_tables() -> None:
             "likes",
             "comments",
             "posts",
+            "wants",
             "ratings",
             "follows",
             "user_achievements",
@@ -278,6 +293,13 @@ async def seed() -> None:
                 session.add(Follow(follower_id=users[follower].id, following_id=users[following].id))
         await session.flush()
 
+        # ---- 想吃清单 ----
+        for username, dish_name in WANTS:
+            user, dish = users[username], dish_by_name[dish_name]
+            if await session.get(Want, (user.id, dish.id)) is None:
+                session.add(Want(user_id=user.id, dish_id=dish.id))
+        await session.flush()
+
         # ---- 帖子 / 评论 / 点赞 ----
         post_count = await session.scalar(select(func.count()).select_from(Post))
         if not post_count:
@@ -337,6 +359,7 @@ async def seed() -> None:
             ("商家", Merchant),
             ("菜品", Dish),
             ("评分", Rating),
+            ("想吃", Want),
             ("帖子", Post),
         ):
             counts[label] = await session.scalar(select(func.count()).select_from(model))
