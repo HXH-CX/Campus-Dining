@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { fetchFeed } from '@/api/post'
 import PostCard from '@/components/PostCard.vue'
 import HotBoard from '@/components/HotBoard.vue'
+import TopDishBoard from '@/components/TopDishBoard.vue'
 import AppSkeleton from '@/components/AppSkeleton.vue'
 import ErrorState from '@/components/ErrorState.vue'
 import type { Post } from '@/types'
@@ -77,6 +78,8 @@ onMounted(() => void fetchPage(1, false))
           发一条食评
         </el-button>
       </div>
+
+      <TopDishBoard />
 
       <div class="tabs">
         <button class="tab" :class="{ active: sort === 'latest' }" @click="sort = 'latest'">最新</button>

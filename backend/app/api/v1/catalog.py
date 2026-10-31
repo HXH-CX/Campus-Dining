@@ -53,6 +53,17 @@ async def search_dishes_route(
     return paginated(items, total, paging.page, paging.page_size)
 
 
+# 注意：/dishes/top 必须注册在 /dishes/{dish_id} 之前，否则会被路径参数吞掉（返回 422 而非榜单）
+@router.get("/dishes/top", response_model=ApiResponse[list[DishOut]], summary="高分榜（够分且够人评）")
+async def top_dishes(
+    db: DbSession,
+    min_rating: float = Query(4.0, ge=0, le=5, description="最低均分"),
+    min_count: int = Query(2, ge=1, le=100, description="最少评价人数，防止一人打五星就登顶"),
+    limit: int = Query(6, ge=1, le=20),
+):
+    return ok(await catalog_service.top_dishes(db, min_rating, min_count, limit))
+
+
 @router.get("/dishes/{dish_id}", response_model=ApiResponse[DishOut], summary="菜品详情")
 async def get_dish(dish_id: int, db: DbSession):
     return ok(await catalog_service.get_dish(db, dish_id))

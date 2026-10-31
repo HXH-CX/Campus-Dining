@@ -43,5 +43,6 @@ declare module 'vue' {
     RatingStars: typeof import('./components/RatingStars.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    TopDishBoard: typeof import('./components/TopDishBoard.vue')['default']
   }
 }

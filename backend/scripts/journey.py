@@ -108,6 +108,30 @@ def main():
     avg_before = dish["avg_rating"]
     count_before = dish["rating_count"]
 
+    print("== 1.1 高分榜")
+    status, body = call("GET", "/dishes/top?min_rating=4&min_count=2&limit=6")
+    check("高分榜 200", status == 200, body)
+    board = body["data"]
+    check("榜单非空", len(board) > 0, board)
+    if board:
+        need(
+            "榜单项字段（卡片要用）",
+            board[0],
+            ["id", "name", "image_url", "merchant_name", "canteen_name", "avg_rating", "rating_count"],
+        )
+        check(
+            "每一项都过双重门槛",
+            all(item["rating_count"] >= 2 and item["avg_rating"] >= 4 for item in board),
+            [(i["name"], i["avg_rating"], i["rating_count"]) for i in board],
+        )
+        check(
+            "按均分倒序",
+            all(board[i]["avg_rating"] >= board[i + 1]["avg_rating"] for i in range(len(board) - 1)),
+            [i["avg_rating"] for i in board],
+        )
+    status, body = call("GET", "/dishes/top?min_count=99")
+    check("门槛过高返回空数组而不是报错", status == 200 and body["data"] == [], body)
+
     print("== 2. 登录")
     status, body = call("POST", "/auth/login", {"username": "xiaoming", "password": "123456"})
     check("学生登录", status == 200, body)

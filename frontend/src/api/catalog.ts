@@ -21,6 +21,11 @@ export function fetchDish(dishId: number) {
   return get<Dish>(`/dishes/${dishId}`)
 }
 
+/** 高分榜：够分且够人评的菜品，按均分倒序 */
+export function fetchTopDishes(params: { min_rating?: number; min_count?: number; limit?: number } = {}) {
+  return get<Dish[]>('/dishes/top', { ...params })
+}
+
 /** 按菜名或商家名模糊搜索；keyword 为空则返回全部上架菜品 */
 export function searchDishes(keyword: string, page = 1, pageSize = 20) {
   return get<PageData<Dish>>('/dishes', { keyword, page, page_size: pageSize })

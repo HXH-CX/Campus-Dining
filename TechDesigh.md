@@ -57,6 +57,7 @@
 | GET | `/merchants/{id}/dishes` | 商家菜品列表（`?include_unavailable=false` 默认只返回上架） |
 | GET | `/merchants/{id}/posts` | 该商家下所有帖子的分页流 |
 | GET | `/dishes` | 菜品搜索：`?keyword=` 按菜名**或商家名**模糊匹配，只返回上架菜品；留空返回全部 |
+| GET | `/dishes/top` | 高分榜：`?min_rating=4&min_count=2&limit=6`，只取上架菜品，按均分倒序、同分看评价数。**必须注册在 `/dishes/{id}` 之前**，否则会被路径参数吞掉（返回 422） |
 | GET | `/dishes/{id}` | 菜品详情（含所属商家、食堂） |
 | GET | `/dishes/{id}/posts` | 该菜品的帖子分页流 |
 | GET | `/dishes/{id}/ratings` | 该菜品的打分记录（分页，返回昵称/头像/星级/时间） |

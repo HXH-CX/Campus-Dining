@@ -140,6 +140,32 @@ async def list_dishes(db: AsyncSession, merchant_id: int, include_unavailable: b
     return [_to_dish_out(d, m_name, c_name) for d, m_name, c_name in rows]
 
 
+async def top_dishes(
+    db: AsyncSession, min_rating: float = 4.0, min_count: int = 2, limit: int = 6
+) -> list[DishOut]:
+    """高分榜：够分且够人评才上榜。
+
+    为什么要有 min_count：只要一个人打 5 星就能让一道菜登顶，榜单会退化成"谁先打分谁赢"。
+    两个门槛一起用，才代表"多数人觉得好吃"。
+    """
+    stmt = (
+        select(Dish, Merchant.name, Canteen.name)
+        .join(Merchant, Dish.merchant_id == Merchant.id)
+        .join(Canteen, Merchant.canteen_id == Canteen.id)
+        .where(
+            Dish.is_available.is_(True),
+            Dish.rating_count >= min_count,
+            Dish.avg_rating >= min_rating,
+        )
+        # 同分时评价多的靠前：4.67 分 3 人评 比 2 人评更可信
+        .order_by(Dish.avg_rating.desc(), Dish.rating_count.desc(), Dish.id)
+        .limit(limit)
+        .options(noload(Dish.merchant))
+    )
+    rows = (await db.execute(stmt)).all()
+    return [_to_dish_out(dish, merchant_name, canteen_name) for dish, merchant_name, canteen_name in rows]
+
+
 async def get_dish(db: AsyncSession, dish_id: int) -> DishOut:
     stmt = (
         select(Dish, Merchant.name, Canteen.name)
