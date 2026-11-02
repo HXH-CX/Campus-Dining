@@ -46,8 +46,8 @@ export function fetchComments(postId: number, page = 1, pageSize = 20) {
   return get<PageData<Comment>>(`/posts/${postId}/comments`, { page, page_size: pageSize })
 }
 
-export function addComment(postId: number, content: string) {
-  return post<Comment>(`/posts/${postId}/comments`, { content })
+export function addComment(postId: number, content: string, replyToId?: number) {
+  return post<Comment>(`/posts/${postId}/comments`, { content, reply_to_id: replyToId ?? null })
 }
 
 export function deleteComment(postId: number, commentId: number) {

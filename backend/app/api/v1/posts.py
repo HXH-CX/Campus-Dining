@@ -89,7 +89,7 @@ async def list_comments(post_id: int, db: DbSession, paging: Paging):
 
 @router.post("/posts/{post_id}/comments", response_model=ApiResponse[CommentOut], summary="发表评论")
 async def add_comment(post_id: int, payload: CommentCreate, db: DbSession, current: CurrentUser):
-    comment = await post_service.add_comment(db, current, post_id, payload.content)
+    comment = await post_service.add_comment(db, current, post_id, payload.content, payload.reply_to_id)
     hot_service.invalidate()  # 评论权重是点赞的 2 倍，榜单会变
     return ok(comment)
 

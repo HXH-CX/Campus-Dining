@@ -15,8 +15,13 @@ async function submit(): Promise<void> {
     ElMessage.warning('用户名只支持 3-50 位字母、数字、下划线')
     return
   }
-  if (form.password.length < 6 || form.password.length > 32) {
-    ElMessage.warning('密码长度需在 6-32 位之间')
+  if (form.password.length < 8 || form.password.length > 32) {
+    ElMessage.warning('密码长度需在 8-32 位之间')
+    return
+  }
+  // 与后端 RegisterIn 的校验保持一致，别让用户填完才被 400 打回来
+  if (!/[A-Za-z]/.test(form.password) || !/\d/.test(form.password)) {
+    ElMessage.warning('密码需同时包含字母和数字')
     return
   }
   if (form.password !== form.confirm) {

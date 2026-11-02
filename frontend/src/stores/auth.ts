@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { apiLogin, apiRegister } from '@/api/auth'
+import { apiLogin, apiLogout, apiRegister } from '@/api/auth'
 import { fetchMe } from '@/api/user'
 import { clearToken, getToken, setToken } from '@/api/request'
 import type { User } from '@/types'
@@ -50,8 +50,16 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  function logout(): void {
-    clear()
+  async function logout(): Promise<void> {
+    // 先通知后端把令牌版本 +1，让这枚 token 在别处也立刻失效；
+    // 拿不到后端（断网 / token 已过期）也必须把本地清干净，所以失败不阻断
+    try {
+      await apiLogout()
+    } catch {
+      // 静默：本地登出是用户意图，不能因为一次请求失败就把人卡在登录态
+    } finally {
+      clear()
+    }
   }
 
   return {

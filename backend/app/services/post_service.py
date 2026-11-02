@@ -15,9 +15,10 @@ from app.core.exceptions import BadRequest, Forbidden, NotFound, Unauthorized
 from app.models.catalog import Canteen, Dish, Merchant
 from app.models.post import Comment, Like, Post
 from app.models.rating import Rating
-from app.models.social import NOTIFY_COMMENT, NOTIFY_LIKE, Follow, Want
+from app.models.social import NOTIFY_COMMENT, NOTIFY_LIKE, NOTIFY_REPLY, Follow, Want
 from app.models.user import User
 from app.schemas.post import (
+    AuthorBrief,
     CommentOut,
     DishInPost,
     LikeResult,
@@ -25,6 +26,7 @@ from app.schemas.post import (
     PostCreate,
     PostUpdate,
     PostOut,
+    ReplyToBrief,
 )
 from app.services import notify_service
 from app.services.dto import author_brief
@@ -324,28 +326,70 @@ async def list_comments(db: AsyncSession, post_id: int, offset: int, limit: int)
             .options(noload(Comment.author))
         )
     ).all()
+    # 一次把父评论的作者捞出来，避免每条回复单独查一次（N+1）
+    reply_ids = {c.reply_to_id for c, _ in rows if c.reply_to_id is not None}
+    parents: dict[int, AuthorBrief] = {}
+    if reply_ids:
+        parent_rows = (
+            await db.execute(
+                select(Comment.id, User).join(User, Comment.user_id == User.id).where(Comment.id.in_(reply_ids))
+            )
+        ).all()
+        parents = {comment_id: author_brief(author) for comment_id, author in parent_rows}
+
     items = [
-        CommentOut(id=c.id, content=c.content, created_at=c.created_at, author=author_brief(u))
+        CommentOut(
+            id=c.id,
+            content=c.content,
+            created_at=c.created_at,
+            author=author_brief(u),
+            # 父评论被删后 reply_to_id 已被数据库置空，这里自然落到 None
+            reply_to=ReplyToBrief(id=c.reply_to_id, author=parents[c.reply_to_id])
+            if c.reply_to_id is not None and c.reply_to_id in parents
+            else None,
+        )
         for c, u in rows
     ]
     return items, total
 
 
-async def add_comment(db: AsyncSession, user: User, post_id: int, content: str) -> CommentOut:
+async def add_comment(
+    db: AsyncSession, user: User, post_id: int, content: str, reply_to_id: int | None = None
+) -> CommentOut:
     post = await db.get(Post, post_id)
     if post is None:
         raise NotFound("帖子不存在")
-    comment = Comment(post_id=post_id, user_id=user.id, content=content)
+
+    # 默认是给帖主打一条"评论了你的食评"；回复某条评论时改为通知父评论作者
+    notify_target = post.user_id
+    notify_type = NOTIFY_COMMENT
+    reply_brief: ReplyToBrief | None = None
+    if reply_to_id is not None:
+        parent = await db.get(Comment, reply_to_id)
+        # 父评论不属于这篇帖子时按不存在处理，避免顺着 id 把回复挂到别的帖子下
+        if parent is None or parent.post_id != post_id:
+            raise NotFound("回复的评论不存在")
+        reply_brief = ReplyToBrief(id=parent.id, author=author_brief(parent.author))
+        notify_target = parent.user_id
+        notify_type = NOTIFY_REPLY
+
+    comment = Comment(post_id=post_id, user_id=user.id, content=content, reply_to_id=reply_to_id)
     db.add(comment)
     await db.execute(update(Post).where(Post.id == post_id).values(comment_count=Post.comment_count + 1))
     # 通知要带 comment_id，先把评论 id 落下来再写通知
     await db.flush()
     await notify_service.push(
-        db, user_id=post.user_id, actor_id=user.id, type_=NOTIFY_COMMENT, post_id=post_id, comment_id=comment.id
+        db, user_id=notify_target, actor_id=user.id, type_=notify_type, post_id=post_id, comment_id=comment.id
     )
     await db.commit()
     await db.refresh(comment)
-    return CommentOut(id=comment.id, content=comment.content, created_at=comment.created_at, author=author_brief(user))
+    return CommentOut(
+        id=comment.id,
+        content=comment.content,
+        created_at=comment.created_at,
+        author=author_brief(user),
+        reply_to=reply_brief,
+    )
 
 
 async def delete_comment(db: AsyncSession, user: User, post_id: int, comment_id: int) -> int:

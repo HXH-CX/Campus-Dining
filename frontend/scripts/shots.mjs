@@ -190,6 +190,7 @@ async function main() {
     '--disable-gpu',
     '--hide-scrollbars',
     '--font-render-hinting=none',
+    ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
   ], { stdio: 'ignore' })
 
   try {

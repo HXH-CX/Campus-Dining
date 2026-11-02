@@ -33,6 +33,8 @@ const draft = ref('')
 const sending = ref(false)
 const removing = ref<number | null>(null)
 const commentBox = ref<HTMLElement | null>(null)
+// 正在回复的那条评论；为 null 时是普通评论
+const replyTo = ref<Comment | null>(null)
 
 const postId = computed(() => Number(props.id))
 const canSend = computed(() => draft.value.trim().length > 0 && !sending.value)
@@ -81,10 +83,11 @@ async function submit(): Promise<void> {
   if (!content || sending.value) return
   sending.value = true
   try {
-    const comment = await addComment(postId.value, content)
+    const comment = await addComment(postId.value, content, replyTo.value?.id)
     comments.value.push(comment)
     commentTotal.value += 1
     draft.value = ''
+    replyTo.value = null
     if (post.value) post.value.comment_count = commentTotal.value
     ElMessage.success('评论已发表')
   } catch {
@@ -92,6 +95,26 @@ async function submit(): Promise<void> {
   } finally {
     sending.value = false
   }
+}
+
+/** 进入"回复某条评论"状态：输入框聚焦并显示「回复 @某某」 */
+function startReply(comment: Comment): void {
+  if (!auth.isLoggedIn) {
+    ElMessage.warning('登录后才能回复')
+    void router.push({ name: 'login', query: { redirect: `/posts/${postId.value}` } })
+    return
+  }
+  replyTo.value = comment
+  commentBox.value?.querySelector('textarea')?.focus()
+}
+
+function cancelReply(): void {
+  replyTo.value = null
+}
+
+/** 点「回复 @某某」滚到被回复的那条，长楼里不用自己翻 */
+function jumpTo(commentId: number): void {
+  document.getElementById(`c${commentId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 /** 本人可删自己的，管理员可删任意 */
@@ -185,13 +208,23 @@ watch(postId, loadPost)
         <h3 class="section-title">💬 评论 · {{ commentTotal }}</h3>
 
         <div class="editor">
+          <div v-if="replyTo" class="replying">
+            <span>回复 @{{ replyTo.author.nickname }}</span>
+            <button class="cancel" @click="cancelReply">取消</button>
+          </div>
           <el-input
             v-model="draft"
             type="textarea"
             :rows="3"
             maxlength="500"
             show-word-limit
-            :placeholder="auth.isLoggedIn ? '友善发言，说说你的看法' : '登录后可以参与讨论'"
+            :placeholder="
+              replyTo
+                ? `回复 @${replyTo.author.nickname}`
+                : auth.isLoggedIn
+                  ? '友善发言，说说你的看法'
+                  : '登录后可以参与讨论'
+            "
             @keydown.ctrl.enter="submit"
           />
           <div class="send">
@@ -205,7 +238,7 @@ watch(postId, loadPost)
         <div v-if="!comments.length" class="empty">还没有评论，抢个沙发</div>
 
         <ul v-else class="list">
-          <li v-for="comment in comments" :key="comment.id" class="item">
+          <li v-for="comment in comments" :id="`c${comment.id}`" :key="comment.id" class="item">
             <span class="avatar">{{ comment.author.nickname.slice(0, 1) }}</span>
             <div class="body">
               <div class="head">
@@ -214,6 +247,7 @@ watch(postId, loadPost)
                 </router-link>
                 <span class="badge">{{ comment.author.title_emoji }} {{ comment.author.title_name }}</span>
                 <span class="tiny time">{{ timeAgo(comment.created_at) }}</span>
+                <button class="reply" @click="startReply(comment)">回复</button>
                 <button
                   v-if="canRemove(comment)"
                   class="del"
@@ -223,7 +257,16 @@ watch(postId, loadPost)
                   删除
                 </button>
               </div>
-              <p>{{ comment.content }}</p>
+              <p>
+                <button
+                  v-if="comment.reply_to"
+                  class="at"
+                  @click="comment.reply_to && jumpTo(comment.reply_to.id)"
+                >
+                  回复 @{{ comment.reply_to.author.nickname }}
+                </button>
+                {{ comment.content }}
+              </p>
             </div>
           </li>
         </ul>
@@ -346,6 +389,59 @@ watch(postId, loadPost)
 .del:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* 回复态提示条：贴在输入框上方，让人确认自己在回谁 */
+.replying {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--brand-soft, #fff4ec);
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.replying .cancel {
+  border: none;
+  background: none;
+  color: var(--brand, #e8452c);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* 「回复」和「删除」同一套轻量按钮，避免在头部堆一排主色按钮 */
+.reply {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0 2px;
+  font-family: inherit;
+}
+
+.reply:hover {
+  color: var(--brand, #e8452c);
+}
+
+/* 「回复 @某某」是正文里的引子，做成可点的，点一下滚到被回复那条 */
+.at {
+  border: none;
+  background: none;
+  padding: 0;
+  margin-right: 2px;
+  color: var(--brand, #e8452c);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.at:hover {
+  text-decoration: underline;
 }
 
 p {

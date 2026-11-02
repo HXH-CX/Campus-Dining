@@ -36,6 +36,8 @@ const ACTIONS: Record<NotificationItem['type'], string> = {
   like: '赞了你的食评',
   comment: '评论了你的食评',
   follow: '关注了你',
+  // 和 comment 区分开：回复是针对"你说的那句话"，评论是针对整篇食评
+  reply: '回复了你的评论',
 }
 
 async function fetchPage(target: number, append: boolean): Promise<void> {

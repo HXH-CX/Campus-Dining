@@ -22,12 +22,16 @@ async def get_current_user(
 ) -> User:
     if credentials is None or not credentials.credentials:
         raise Unauthorized()
-    user_id = decode_access_token(credentials.credentials)
-    if user_id is None:
+    decoded = decode_access_token(credentials.credentials)
+    if decoded is None:
         raise Unauthorized()
+    user_id, token_version = decoded
     user = await db.get(User, user_id)
     if user is None:
         raise Unauthorized("账号不存在")
+    # 登出 / 改密后版本号对不上，旧 token 立即作废
+    if token_version != user.token_version:
+        raise Unauthorized("登录已失效，请重新登录")
     return user
 
 
@@ -41,10 +45,15 @@ async def get_optional_user(
     """
     if credentials is None or not credentials.credentials:
         return None
-    user_id = decode_access_token(credentials.credentials)
-    if user_id is None:
+    decoded = decode_access_token(credentials.credentials)
+    if decoded is None:
         return None
-    return await db.get(User, user_id)
+    user_id, token_version = decoded
+    user = await db.get(User, user_id)
+    # 被吊销的 token 在公开接口上按未登录处理，不抛异常
+    if user is None or token_version != user.token_version:
+        return None
+    return user
 
 
 async def get_current_admin(user: Annotated[User, Depends(get_current_user)]) -> User:

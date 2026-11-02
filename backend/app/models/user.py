@@ -37,6 +37,13 @@ class User(Base, TimestampMixin):
     following_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0"), comment="关注数"
     )
+    token_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+        comment="令牌版本：登出/改密时 +1，旧 token 随之失效",
+    )
 
     achievements: Mapped[list[UserAchievement]] = relationship(
         back_populates="user",

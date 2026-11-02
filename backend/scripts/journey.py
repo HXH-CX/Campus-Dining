@@ -333,11 +333,24 @@ def main():
 
     status, body = call("POST", f"/posts/{post_id}/comments", {"content": "旅程脚本的评论"}, token=token)
     check("发评论", status == 200, body)
-    need("评论字段", body["data"], ["id", "content", "created_at", "author"])
+    need("评论字段", body["data"], ["id", "content", "created_at", "author", "reply_to"])
+    check("顶层评论 reply_to 为 null", body["data"]["reply_to"] is None, body["data"])
+    parent_comment_id = body["data"]["id"]
 
     status, body = call("GET", f"/posts/{post_id}/comments?page=1&page_size=20")
     check("评论列表分页", status == 200 and body["data"]["total"] >= 1, body)
-    need("评论项字段", body["data"]["items"][0], ["id", "content", "created_at", "author"])
+    need("评论项字段", body["data"]["items"][0], ["id", "content", "created_at", "author", "reply_to"])
+
+    status, body = call(
+        "POST",
+        f"/posts/{post_id}/comments",
+        {"content": "旅程脚本的回复", "reply_to_id": parent_comment_id},
+        token=token,
+    )
+    check("回复评论", status == 200, body)
+    need("被回复结构", body["data"]["reply_to"], ["id", "author"])
+    need("被回复作者字段", body["data"]["reply_to"]["author"], ["id", "nickname", "avatar_url", "title_level", "title_name", "title_emoji"])
+    check("被回复指向父评论", body["data"]["reply_to"]["id"] == parent_comment_id, body["data"]["reply_to"])
 
     print("== 5.2 通知（被赞 / 被评论 / 被关注）")
     # 换一个用户来操作，才能拿到"别人给你发的通知"

@@ -30,20 +30,35 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def create_access_token(user_id: int) -> tuple[str, int]:
-    """返回 (token, 有效期秒数)。MVP 不做 refresh token，过期即重新登录。"""
+def create_access_token(user_id: int, token_version: int = 0) -> tuple[str, int]:
+    """返回 (token, 有效期秒数)。MVP 不做 refresh token，过期即重新登录。
+
+    ver 是"令牌版本"：登出 / 改密时把 users.token_version +1，旧 token 立刻失效。
+    JWT 本身无法撤回，这是不引入黑名单表就能做到吊销的最小代价。
+    """
     expires_delta = timedelta(days=settings.JWT_EXPIRE_DAYS)
     expire_at = datetime.now(timezone.utc) + expires_delta
-    payload: dict[str, Any] = {"sub": str(user_id), "exp": expire_at, "iat": datetime.now(timezone.utc)}
+    payload: dict[str, Any] = {
+        "sub": str(user_id),
+        "ver": token_version,
+        "exp": expire_at,
+        "iat": datetime.now(timezone.utc),
+    }
     token = jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
     return token, int(expires_delta.total_seconds())
 
 
-def decode_access_token(token: str) -> int | None:
-    """解出 user_id；任何异常（过期/签名错/格式错）一律返回 None。"""
+def decode_access_token(token: str) -> tuple[int, int] | None:
+    """解出 (user_id, 令牌版本)；任何异常（过期/签名错/格式错）一律返回 None。
+
+    ver 缺失时按 0 处理：这个字段是后加的，早期签发的 token 里没有它，
+    而所有用户的 token_version 初始就是 0，这样老 token 不会被误判成失效。
+    """
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
         sub = payload.get("sub")
-        return int(sub) if sub is not None else None
+        if sub is None:
+            return None
+        return int(sub), int(payload.get("ver", 0))
     except (jwt.PyJWTError, ValueError, TypeError):
         return None

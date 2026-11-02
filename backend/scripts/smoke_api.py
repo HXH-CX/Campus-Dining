@@ -260,7 +260,7 @@ def main():
     # 新用户，专门用来验证称号解锁，不污染种子用户
     new_username = f"smoke_{uuid.uuid4().hex[:6]}"
     status, body = call(
-        "POST", "/auth/register", {"username": new_username, "nickname": "冒烟用户", "password": "123456"}
+        "POST", "/auth/register", {"username": new_username, "nickname": "冒烟用户", "password": "smoke12345"}
     )
     check("注册新用户", status == 200, body)
     smoke_token = body["data"]["access_token"]
@@ -438,6 +438,101 @@ def main():
     status, body = call("GET", f"/admin/dishes?merchant_id={p_merchant}", token=admin)
     dish_a = next(d for d in body["data"]["items"] if d["id"] == p_dishes[0])
     check("删帖不影响评分（评分独立于帖子）", dish_a["rating_count"] == 1 and dish_a["avg_rating"] == 5.0, dish_a)
+
+    print("== 评论回复")
+    me_student = call("GET", "/users/me", token=student)[1]["data"]
+    feed = call("GET", "/posts/feed?page_size=5")[1]["data"]["items"]
+    # 借用一条种子帖子做评论，测完把自己的评论删掉，comment_count 会一起还原
+    target_post = next((p for p in feed if p["author"]["id"] != smoke_uid), feed[0])
+    tid = target_post["id"]
+
+    status, body = call("POST", f"/posts/{tid}/comments", {"content": "冒烟父评论"}, token=student)
+    check("发顶层评论", status == 200 and body["data"]["reply_to"] is None, body)
+    parent_id = body["data"]["id"]
+
+    status, body = call(
+        "POST", f"/posts/{tid}/comments", {"content": "冒烟回复一下", "reply_to_id": parent_id}, token=smoke_token
+    )
+    reply_id = body["data"]["id"] if status == 200 else 0
+    check(
+        "回复带出被回复评论与作者",
+        status == 200
+        and body["data"]["reply_to"]["id"] == parent_id
+        and body["data"]["reply_to"]["author"]["id"] == me_student["id"],
+        body,
+    )
+
+    status, body = call("GET", f"/posts/{tid}/comments?page_size=50")
+    row = next((c for c in body["data"]["items"] if c["id"] == reply_id), None)
+    check(
+        "评论列表能拿到 reply_to（含作者昵称）",
+        row is not None and row["reply_to"]["author"]["nickname"] == me_student["nickname"],
+        row,
+    )
+
+    # 拿别处的评论 id 挂到这篇帖子下：按不存在处理，不能跨帖接话
+    other_post = next((p for p in feed if p["id"] != tid), None)
+    if other_post is not None:
+        status, body = call(
+            "POST",
+            f"/posts/{other_post['id']}/comments",
+            {"content": "跨帖回复", "reply_to_id": parent_id},
+            token=smoke_token,
+        )
+        check("跨帖回复被拒 404", status == 404, body)
+
+    # 回复的通知应该给父评论作者，而不是帖主
+    status, body = call("GET", "/notifications?page_size=20", token=student)
+    hit = [n for n in body["data"]["items"] if n["type"] == "reply" and n["comment_content"] == "冒烟回复一下"]
+    check("父评论作者收到 reply 通知", bool(hit), body["data"]["items"][:2])
+    check("通知文案能落到评论区（带所属帖子）", bool(hit) and hit[0]["post"]["id"] == tid, hit[:1])
+
+    status, body = call("DELETE", f"/posts/{tid}/comments/{parent_id}", token=student)
+    check("删除父评论", status == 200, body)
+    status, body = call("GET", f"/posts/{tid}/comments?page_size=50")
+    row = next((c for c in body["data"]["items"] if c["id"] == reply_id), None)
+    check("父评论删除后回复仍在，reply_to 置空（不是级联删）", row is not None and row["reply_to"] is None, row)
+
+    call("DELETE", f"/posts/{tid}/comments/{reply_id}", token=smoke_token)
+    after = call("GET", f"/posts/{tid}")[1]["data"]
+    check("清掉自建评论后计数还原", after["comment_count"] == target_post["comment_count"], after["comment_count"])
+
+    print("== 注册密码强度")
+    probe = f"weak_{uuid.uuid4().hex[:6]}"
+    status, body = call("POST", "/auth/register", {"username": probe, "nickname": "弱密码", "password": "12345678"})
+    check("纯数字密码被拒", status == 400, body)
+    status, body = call("POST", "/auth/register", {"username": probe, "nickname": "弱密码", "password": "abcdefgh"})
+    check("纯字母密码被拒", status == 400, body)
+    status, body = call("POST", "/auth/register", {"username": probe, "nickname": "弱密码", "password": "ab12"})
+    check("短密码被拒", status == 400, body)
+
+    print("== 登录限流")
+    # 用一个不存在的用户名探测：锁定只影响这个键，不会连累种子账号，
+    # 也就不会让下一次跑 smoke 一上来就被自己的上次测试拦住
+    probe_user = f"lockprobe_{uuid.uuid4().hex[:6]}"
+    for i in range(5):
+        status, body = call("POST", "/auth/login", {"username": probe_user, "password": "wrong1234"})
+        check(f"第 {i + 1} 次错误密码 401", status == 401 and body["code"] == 40101, body)
+    status, body = call("POST", "/auth/login", {"username": probe_user, "password": "wrong1234"})
+    check("第 6 次被限流 429", status == 429 and body["code"] == 42901, body)
+    check("限流提示带分钟数", "分钟" in body["message"], body["message"])
+
+    # 成功登录会同时清掉 IP 维度的计数，否则反复跑本脚本会把本机 IP 攒到上限
+    login("xiaoming", "123456")
+    status, body = call("POST", "/auth/login", {"username": probe_user, "password": "wrong1234"})
+    check("成功登录后 IP 计数已重置（该用户仍被自身锁定）", status == 429, body)
+
+    print("== 令牌吊销")
+    revoked_login = call("POST", "/auth/login", {"username": new_username, "password": "smoke12345"})
+    revoked_token = revoked_login[1]["data"]["access_token"]
+    status, _ = call("GET", "/users/me", token=revoked_token)
+    check("登出前 token 可用", status == 200, status)
+    status, body = call("POST", "/auth/logout", token=revoked_token)
+    check("登出成功", status == 200, body)
+    status, body = call("GET", "/users/me", token=revoked_token)
+    check("登出后旧 token 立即失效 401", status == 401 and body["code"] == 40101, body)
+    again = call("POST", "/auth/login", {"username": new_username, "password": "smoke12345"})
+    check("重新登录拿到新 token 可用", call("GET", "/users/me", token=again[1]["data"]["access_token"])[0] == 200, again[1])
 
     print("== 清理临时数据")
     asyncio.run(cleanup())

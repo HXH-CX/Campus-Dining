@@ -131,6 +131,8 @@ export interface Comment {
   content: string
   created_at: string
   author: AuthorBrief
+  /** 回复的是哪条评论；顶层评论为 null */
+  reply_to: { id: number; author: AuthorBrief } | null
 }
 
 export interface LikeResult {
@@ -193,7 +195,7 @@ export interface UploadResult {
 }
 
 /** 站内通知（GET /notifications） */
-export type NotificationType = 'like' | 'comment' | 'follow'
+export type NotificationType = 'like' | 'comment' | 'follow' | 'reply'
 
 export interface NotificationPostBrief {
   id: number

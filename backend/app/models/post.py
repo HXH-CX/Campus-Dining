@@ -46,7 +46,10 @@ class Post(Base, TimestampMixin):
 
 class Comment(Base, CreatedAtMixin):
     __tablename__ = "comments"
-    __table_args__ = (Index("idx_comments_post", "post_id", "created_at"),)
+    __table_args__ = (
+        Index("idx_comments_post", "post_id", "created_at"),
+        Index("idx_comments_reply", "reply_to_id"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     post_id: Mapped[int] = mapped_column(
@@ -54,6 +57,14 @@ class Comment(Base, CreatedAtMixin):
     )
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", name="fk_comment_user"), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    # 只做一层：回复某条评论时记下父评论 id，顶层评论为 NULL。
+    # 不做无限层级——楼太多列表会散架，@ 一串名字也读不清
+    reply_to_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("comments.id", name="fk_comment_reply_to", ondelete="SET NULL"),
+        default=None,
+        comment="回复的评论 id；顶层评论为 NULL",
+    )
 
     author: Mapped[User] = relationship(lazy="selectin")
 

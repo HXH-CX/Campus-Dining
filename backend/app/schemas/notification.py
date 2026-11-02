@@ -23,7 +23,7 @@ class NotificationPostBrief(BaseModel):
 
 class NotificationOut(BaseModel):
     id: int
-    type: Literal["like", "comment", "follow"]
+    type: Literal["like", "comment", "follow", "reply"]
     is_read: bool
     created_at: datetime
     actor: AuthorBrief

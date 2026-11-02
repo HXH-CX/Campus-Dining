@@ -107,6 +107,7 @@ class PostOut(BaseModel):
 
 class CommentCreate(BaseModel):
     content: str = Field(min_length=1, max_length=500)
+    reply_to_id: int | None = Field(default=None, description="回复哪条评论；不传就是顶层评论")
 
     @field_validator("content")
     @classmethod
@@ -117,11 +118,23 @@ class CommentCreate(BaseModel):
         return value
 
 
+class ReplyToBrief(BaseModel):
+    """被回复的那条评论：只带 id 与作者，够前端渲染「回复 @某某」并做锚点跳转。
+
+    故意不带正文：楼中楼里重复展示上一句会让列表变长且难扫，
+    想看原文点一下滚到那条就是了。
+    """
+
+    id: int
+    author: AuthorBrief
+
+
 class CommentOut(BaseModel):
     id: int
     content: str
     created_at: datetime
     author: AuthorBrief
+    reply_to: ReplyToBrief | None = None
 
 
 class LikeResult(BaseModel):

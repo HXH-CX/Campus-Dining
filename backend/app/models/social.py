@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 NOTIFY_LIKE = "like"
 NOTIFY_COMMENT = "comment"
 NOTIFY_FOLLOW = "follow"
+# 回复某条评论：接收者是父评论作者，不是帖子作者——
+# 否则帖主会被"别人在我帖子下面互相接话"刷屏
+NOTIFY_REPLY = "reply"
 
 
 class Follow(Base, CreatedAtMixin):

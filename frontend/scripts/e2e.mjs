@@ -177,6 +177,8 @@ async function main() {
     '--no-first-run',
     '--disable-gpu',
     '--hide-scrollbars',
+    // CI 容器里 Chrome 的沙箱常常起不来，本地则保持默认（开沙箱）
+    ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
   ], { stdio: 'ignore' })
 
   let ws
@@ -317,6 +319,50 @@ async function main() {
     await tab.key('Escape')
     await sleep(400)
     ok('Esc 关闭大图', !(await tab.eval(`!!document.querySelector('.viewer')`)))
+
+    // ---------------------------------------------------------------- 评论回复
+    console.log('== 评论回复')
+    const nick = login.data.user.nickname
+    // 自己发一条父评论再回复自己：不碰种子用户的评论，跑完连父带子一起删
+    const parentRes = await api('POST', `/posts/${withImage.id}/comments`, { content: 'e2e 父评论' }, token)
+    const parentCommentId = parentRes.data?.id ?? null
+    if (parentCommentId) {
+      await tab.goto(`${WEB}/posts/${withImage.id}`)
+      await tab.waitFor(`document.querySelectorAll('.comments .item').length > 0`)
+      const clicked = await tab.eval(`(() => {
+        const item = [...document.querySelectorAll('.comments .item')].find((n) => n.textContent.includes('e2e 父评论'));
+        if (!item) return false;
+        item.querySelector('.reply')?.click();
+        return true;
+      })()`)
+      ok('评论上有「回复」入口', clicked)
+      ok(
+        '点回复后输入框提示回复对象',
+        await tab.eval(`(document.querySelector('.comments textarea')?.placeholder || '').includes(${JSON.stringify(nick)})`),
+      )
+
+      await tab.eval(`(() => {
+        const ta = document.querySelector('.comments textarea');
+        ta.value = 'e2e 回复内容';
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`)
+      await sleep(200)
+      await tab.eval(
+        `Array.from(document.querySelectorAll('.comments button')).find((b) => b.innerText.trim() === '发表')?.click()`,
+      )
+      const replied = await tab.waitFor(`!!document.querySelector('.comments .at')`, 8000)
+      ok('发表后出现「回复 @某某」', replied)
+      if (replied) {
+        const at = await tab.eval(`document.querySelector('.comments .at').innerText.trim()`)
+        ok('回复对象是刚回复的人', String(at).includes(`@${nick}`), at)
+      }
+
+      // 自建自清：回复和父评论都删掉，评论数还原
+      const after = await api('GET', `/posts/${withImage.id}/comments?page_size=50`)
+      const mineReply = after.data.items.find((c) => c.reply_to?.id === parentCommentId)
+      if (mineReply) await api('DELETE', `/posts/${withImage.id}/comments/${mineReply.id}`, null, token)
+      await api('DELETE', `/posts/${withImage.id}/comments/${parentCommentId}`, null, token)
+    }
 
     // ---------------------------------------------------------------- 同店其他菜
     console.log('== 同店其他菜')

@@ -26,9 +26,10 @@ function goSearch(): void {
   router.push({ name: 'search', query: kw ? { kw } : {} })
 }
 
-function handleCommand(command: string): void {
+async function handleCommand(command: string): Promise<void> {
   if (command === 'logout') {
-    auth.logout()
+    // 等服务端把 token 作废再走，否则会出现"提示已退出、但旧 token 还能用"的错觉
+    await auth.logout()
     ElMessage.success('已退出登录')
     router.push({ name: 'home' })
     return
