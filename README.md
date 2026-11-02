@@ -5,6 +5,46 @@
 
 定位是「小红书的信息流 + 大众点评的菜品评分」，**弱化交易**：不点单、不支付、不做举报与审核流程。
 
+## 界面
+
+<p align="center">
+  <img src="docs/screenshots/home.png" alt="首页" width="880">
+</p>
+<p align="center"><sub>首页：高分榜、今日热榜、图文流（最新 / 最热 / 关注）</sub></p>
+
+<p align="center">
+  <img src="docs/screenshots/dish.png" alt="菜品详情" width="435">
+  <img src="docs/screenshots/random.png" alt="今天吃什么" width="435">
+</p>
+<p align="center"><sub>左：菜品详情（口味标签、想吃、这家还有）　右：一键随机抽一道菜，可换、可直接去吃</sub></p>
+
+<p align="center">
+  <img src="docs/screenshots/search.png" alt="搜索" width="435">
+  <img src="docs/screenshots/create.png" alt="发帖" width="435">
+</p>
+<p align="center"><sub>左：四页签搜索 + 口味标签筛选（还没菜的标签置灰）　右：发帖必须绑菜品并打分</sub></p>
+
+<p align="center">
+  <img src="docs/screenshots/notifications.png" alt="通知中心" width="435">
+  <img src="docs/screenshots/profile-liked.png" alt="我赞过的" width="435">
+</p>
+<p align="center"><sub>左：通知中心（被赞 / 被评论 / 被关注）　右：个人主页「我赞过的」，仅本人可见</sub></p>
+
+<p align="center">
+  <img src="docs/screenshots/admin.png" alt="管理后台" width="880">
+</p>
+<p align="center"><sub>管理后台：今日新增、近 7 天发帖趋势、待关注项（上架没人评 / 没有在售菜的商家）</sub></p>
+
+<p align="center">
+  <img src="docs/screenshots/mobile-home.png" alt="移动端首页" width="235">
+  <img src="docs/screenshots/mobile-dish.png" alt="移动端菜品页" width="235">
+  <img src="docs/screenshots/mobile-notifications.png" alt="移动端通知" width="235">
+</p>
+<p align="center"><sub>移动端：底部导航 + 中间抬起的发帖键，≤900px 顶栏搜索收成图标</sub></p>
+
+> 截图由 `frontend/scripts/shots.mjs` 用真浏览器生成（同一套 CDP 驱动，不依赖 puppeteer），
+> 改了样式跑一遍即可全套重截，不用手工一张张换。
+
 ## 功能
 
 **学生端**
@@ -33,7 +73,7 @@
 
 | 层 | 选型 |
 |---|---|
-| 前端 | Vue 3 + Vite + TypeScript + Vue Router + Pinia + Element Plus（按需引入，首屏 JS 约 280KB / gzip 94KB） |
+| 前端 | Vue 3 + Vite + TypeScript + Vue Router + Pinia + Element Plus（按需引入，首屏 JS 131.7KB / gzip 50KB） |
 | 后端 | FastAPI + SQLAlchemy 2.0 (async) + Alembic + MySQL 8 |
 | 认证 | JWT（HS256，7 天）+ bcrypt |
 | 图片 | 本地 `uploads/`，前端压缩后上传，服务端校验扩展名与文件头魔数 |
@@ -57,13 +97,17 @@ frontend/
     components/   # PostCard / HotBoard / ErrorState / AppSkeleton …
     views/        # 前台 13 页 + admin/ 5 页
     utils/        # 错误分类、图片压缩、格式化
-  scripts/        # e2e.mjs：真浏览器跑一遍关键交互
+  scripts/        # e2e.mjs（真浏览器关键交互）、shots.mjs（生成 README 截图）
+dev.py            # 仓库根：一键启动（建 venv / 装依赖 / 等 MySQL / 迁移 / 灌种子 / 拉起前后端）
+start.bat         # 仓库根：Windows 入口（双击即可）
+start.sh          # 仓库根：macOS / Linux 入口
+docs/screenshots/ # 仓库根：README 用的界面截图，由 shots.mjs 生成
 Research.md  PDR.md  TechDesigh.md  AGENTS.md   # 需求、设计、协作约束
 ```
 
 ## 快速开始
 
-前置：Python 3.11+、Node 18+、MySQL 8（本地 3306）。
+前置：Python 3.10+、Node 18+、MySQL 8（本地 3306）。
 
 ### 1. 建库
 
@@ -71,7 +115,29 @@ Research.md  PDR.md  TechDesigh.md  AGENTS.md   # 需求、设计、协作约束
 CREATE DATABASE campus_foodie DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-### 2. 后端
+### 2. 一键启动
+
+在仓库根目录执行：
+
+```bash
+python dev.py                # Windows 也可双击 start.bat；macOS / Linux 用 ./start.sh
+```
+
+它会按需补齐环境：缺 venv 就建、缺依赖就装、缺 `.env` 就从模板复制、等 MySQL 起来、跑迁移、
+补种子数据（已有的不重复写），最后同时拉起前后端并打开浏览器。**重复执行是安全的**，
+可以直接当日常启动入口。
+
+| 参数 | 作用 |
+|---|---|
+| `--reset` | 清空业务表后重灌种子（会丢数据） |
+| `--reload` | 后端开热重载 |
+| `--no-browser` | 不自动打开浏览器 |
+
+首次启动前确认 `backend/.env` 里的 `DATABASE_URL`（写法见下节）。
+
+启动后：前端 http://127.0.0.1:5173 ，接口文档 http://127.0.0.1:8000/docs ，后台 `/admin`。
+
+### 3. 手动启动（想自己控制每一步）
 
 ```bash
 cd backend
@@ -96,9 +162,7 @@ DATABASE_URL=mysql+asyncmy://root:你的密码@127.0.0.1:3306/campus_foodie
 顺手把 `JWT_SECRET` 换掉：`python -c "import secrets; print(secrets.token_hex(32))"`。
 `.env` 已在 `.gitignore` 里，不会进仓库。
 
-接口文档：http://127.0.0.1:8000/docs
-
-### 3. 前端
+另开一个终端：
 
 ```bash
 cd frontend
@@ -126,15 +190,15 @@ Vite 已把 `/api` 与 `/uploads` 代理到 `127.0.0.1:8000`，前端代码里�
 ```bash
 cd backend
 python scripts/smoke_api.py     # 74 项：权限、聚合、称号、删除保护等业务逻辑
-python scripts/journey.py       # 153 项：按前端真实调用顺序验字段契约
+python scripts/journey.py       # 162 项：按前端真实调用顺序验字段契约
 
 cd ../frontend
-npm run e2e                     # 24 项：真浏览器走一遍关键交互
+npm run e2e                     # 37 项：真浏览器走一遍关键交互
 ```
 
 分工：
 - `smoke` 验「算得对不对」，`journey` 验「前端要的字段后端有没有」——接口一改先跑 `journey`；
-- `e2e` 验「点得对不对」：首页 / 关注流 / 搜索四页签 / 发帖结果面板 / 大图预览 / 同店其他菜 / 通知 / 个人中心 / 375px 不溢出。它用 CDP 驱动本机 Chrome，**不需要装 puppeteer**，失败会截图到 `frontend/.e2e-shots/`。
+- `e2e` 验「点得对不对」：首页 / 关注流 / 搜索四页签 / 口味标签筛选 / 发帖结果面板 / 大图预览 / 同店其他菜 / 通知 / 个人中心 / 后台标签勾选 / 375px 不溢出。它用 CDP 驱动本机 Chrome，**不需要装 puppeteer**，失败会截图到 `frontend/.e2e-shots/`。
 
 `e2e` 会真的发一条帖子再删掉；为保证菜品均分不被测试数据带偏，它挑的是「当前账号已评过、且分数相同」的菜，覆盖后聚合值不变。
 
@@ -145,7 +209,7 @@ npm run e2e                     # 24 项：真浏览器走一遍关键交互
 | `Research.md` | 竞品分析、需求取舍、已识别风险 |
 | `PDR.md` | 功能范围、页面清单、业务规则、决策记录 |
 | `TechDesigh.md` | 数据模型、API 契约、错误码、聚合策略、前端约定 |
-| `AGENTS.md` | 协作边界与 13 条「实现时不得偏离」的技术契约 |
+| `AGENTS.md` | 协作边界与 34 条「实现时不得偏离」的技术契约 |
 
 ## 已知边界（MVP 有意不做）
 

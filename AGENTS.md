@@ -39,6 +39,14 @@ uploads/          # 本地图片存储目录 (需加入 .gitignore)
 alembic/          # 数据库迁移脚本
 ```
 
+### 仓库根
+```text
+dev.py            # 一键启动，跨平台；启动逻辑只此一份
+start.bat         # Windows 入口，转调 dev.py
+start.sh          # macOS / Linux 入口，转调 dev.py
+docs/screenshots/ # README 截图，由 frontend/scripts/shots.mjs 生成
+```
+
 ## 3. 代码风格与技术约束
 
 ### 前端规范
@@ -109,3 +117,7 @@ alembic/          # 数据库迁移脚本
 32. **图片体积上限三处必须一致**：`backend/app/core/config.py` 的 `UPLOAD_MAX_MB`（连同 `.env` / `.env.example`）、`frontend/src/api/upload.ts` 导出的 `UPLOAD_MAX_MB`、以及各 `beforeUpload`（**引用常量，不要再写字面量**）。当前 **10MB**——不是放行大图，而是给"压缩失败退回原图"留余量，手机直拍原图 3-8MB，设 5MB 会把正常照片挡在门外。判断只看**最终要传的那个文件**（`compress.file.size`），不要用 `!compressed` 作前置条件：压缩"成功"但体积仍超标是可能的，那样会漏到后端变成一句笼统的 400。
 33. **移动端导航是布局层的事，别往页面里塞**：`MobileTabBar` 只挂在 `DefaultLayout`，`AdminLayout` 和登录/注册页（顶层路由，不在 DefaultLayout 内）都没有。三条硬约定：① **发帖是按钮不是链接**（要登录），高亮用 `route.name === 'create'` 判断，靠 `active-class` 是拿不到的；② 发帖按钮**绝对定位**浮在栏上方（`bottom: 33px`），五个文字用 `translateY(10px)` 对齐——塞进 flex 流会让那个文字被顶高约 10px；③ 未登录点发帖/通知/我的跳登录并带 `redirect`，**不做禁用态**。另外 ≤900px 顶栏输入框会换成 `.search-btn` 图标——手机上原本**根本没有搜索入口**（`.hide-sm` 把它 display:none 了），这条别再改回去。窄屏 `.shell` 的 `padding-bottom` 必须等于栏高（含 `env(safe-area-inset-bottom)`），否则页面最后一行永远被压住，e2e 有断言锁住。
 34. **菜品标签是"白名单 + JSON 列"，两个坑必须记住**：① 过滤用 `Dish.tags.contains(tag)` 时**传标量**，不要传 `[tag]`——MySQL 的 `JSON_CONTAINS(target, candidate)` 里 `candidate='"辣"'` 才是"数组包含这个标量"，传 `["辣"]` 变成"包含这个子数组"，永远返回 0 条（已踩过）。② `DishUpdate.tags` 的语义是 **`None`=不动、`[]`=清空**，和 `image_url` 的"非 None 才改"不一样，别合并成一个判断。词表在 `app/core/tags.py`，**不要**让学生自由填标签（MVP 没审核，会出现「辣/微辣/中辣」四种写法，搜「辣」反而搜不全）；校验放 pydantic `field_validator`（抛 `ValueError` → 全局转 400），service 里不要造 HTTP 异常。`GET /dishes/tags` 是静态路径，同样要抢在 `/dishes/{id}` 前面注册。
+
+35. **启动入口只保留 `dev.py` 一处**：`.bat` / `.sh` 只做一件事——找到 python 并把参数转给它，任何判断（建 venv、装依赖、等 MySQL、迁移、灌种子）都写在 `dev.py` 里。理由很实际：两套 shell 各写一遍必然走岔，Windows 上还要处理 `npm` 是 `.cmd`、杀进程要 `taskkill /T`（npm 会再派一个 node 子进程，只 kill 父进程会把 5173 留在后台）。三条必须保持的行为：① **幂等**——重复执行不能重复装依赖；依赖是否就位用「venv 里的 python 能不能 `import fastapi`」判断，别放 `.installed` 标记文件，那个在换机器 / venv 半残时是假的；② **种子可无脑跑**——`app.seed` 按用户名和名称判重，所以每次启动都跑一遍补齐即可，不用先查库是否为空；③ **端口被占用视为"已在跑"并跳过启动**，不要报错退出，否则「我手动起过后端再跑一次脚本」会直接失败。清理要按进程树来，且 `SIGTERM` / `SIGBREAK` 都归一成 Ctrl-C。
+
+36. **README 的截图必须能整套重放**：`frontend/scripts/shots.mjs` 用和 e2e 同一套 CDP 驱动本机 Chrome（不引 puppeteer），`npm run shots` 一次生成桌面 1440×900 与移动 375×812 两组图到 `docs/screenshots/`。两条约束：① **不写死菜品 id**，默认取高分榜第一道，换一库种子也能跑；② **等页面真的画完再截**——等 `.postcard` 出现、等 `document.images` 全部 `complete`；弹窗类（如「今天吃什么」）还要等「正在翻菜单…」文案消失，否则截到的是骰子仍在滚的中间态（已踩过）。token 不写进脚本，用 `create_access_token(user_id)` 在本地生成后经环境变量传入。
