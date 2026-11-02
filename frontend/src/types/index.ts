@@ -73,6 +73,8 @@ export interface Dish {
   avg_rating: number
   rating_count: number
   is_available: boolean
+  /** 口味/形态标签，白名单由后端定（GET /dishes/tags） */
+  tags?: string[]
   /** 只有菜品详情接口会填真值，列表接口为 0 */
   want_count?: number
   is_wanted?: boolean
@@ -208,4 +210,13 @@ export interface NotificationItem {
   actor: AuthorBrief
   post: NotificationPostBrief | null
   comment_content: string | null
+}
+
+/** 标签清单项（GET /dishes/tags） */
+export interface DishTag {
+  name: string
+  emoji: string
+  group: string
+  /** 挂了这个标签的在售菜品数，0 表示暂时没菜 */
+  count: number
 }

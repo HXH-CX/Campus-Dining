@@ -47,12 +47,17 @@ export function adminDishes(page = 1, pageSize = 20, merchantId?: number) {
     ...(merchantId ? { merchant_id: merchantId } : {}),
   })
 }
-export function adminCreateDish(payload: { name: string; merchant_id: number; image_url?: string | null }) {
+export function adminCreateDish(payload: {
+  name: string
+  merchant_id: number
+  image_url?: string | null
+  tags?: string[]
+}) {
   return post<Dish>('/admin/dishes', payload)
 }
 export function adminUpdateDish(
   id: number,
-  payload: { name?: string; merchant_id?: number; image_url?: string | null },
+  payload: { name?: string; merchant_id?: number; image_url?: string | null; tags?: string[] },
 ) {
   return put<Dish>(`/admin/dishes/${id}`, payload)
 }

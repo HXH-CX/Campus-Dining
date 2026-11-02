@@ -601,6 +601,37 @@ def main():
     status, body = call("GET", "/posts/feed?keyword=" + urllib.parse.quote("辣"))
     check("帖子文案搜索", status == 200, body)
 
+    # ---- 标签
+    status, body = call("GET", "/dishes/tags")
+    tag_list = body["data"] if status == 200 else []
+    check("标签清单返回", status == 200 and isinstance(tag_list, list) and len(tag_list) >= 10, status)
+    need("标签项字段", tag_list[0], ["name", "emoji", "group", "count"])
+    check(
+        "标签数量和存在菜品数一致",
+        all(isinstance(t["count"], int) and t["count"] >= 0 for t in tag_list),
+        [t["count"] for t in tag_list],
+    )
+
+    status, body = call("GET", "/dishes?tag=" + urllib.parse.quote("辣"))
+    spicy = body["data"]["items"] if status == 200 else []
+    check("按标签筛选有结果", status == 200 and body["data"]["total"] >= 1, body)
+    check("筛选结果都带该标签", all("辣" in d["tags"] for d in spicy), [(d["name"], d["tags"]) for d in spicy])
+    check("筛选结果不含无关菜", all("清淡" not in d["tags"] for d in spicy), [(d["name"], d["tags"]) for d in spicy])
+
+    status, body = call("GET", "/dishes?tag=" + urllib.parse.quote("辣") + "&keyword=" + urllib.parse.quote("鸡"))
+    combo = body["data"]["items"] if status == 200 else []
+    check(
+        "标签与关键词取交集",
+        all("辣" in d["tags"] and "鸡" in d["name"] for d in combo),
+        [(d["name"], d["tags"]) for d in combo],
+    )
+
+    status, body = call("GET", "/dishes?tag=" + urllib.parse.quote("绝无此标签"))
+    check("未知标签返回空而不是报错", status == 200 and body["data"]["total"] == 0, body)
+
+    status, body = call("GET", f"/dishes/{spicy[0]['id']}" if spicy else "/dishes/1")
+    check("菜品详情带标签", status == 200 and isinstance(body["data"]["tags"], list), body)
+
     status, body = call("GET", "/merchants?keyword=" + urllib.parse.quote("拉面"))
     check("搜商家名", status == 200 and body["data"]["total"] >= 1, body)
     need("商家搜索结果字段", body["data"]["items"][0], ["id", "name", "canteen_name", "overall_rating", "dish_count"])

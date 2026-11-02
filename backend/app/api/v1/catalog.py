@@ -7,7 +7,7 @@ from fastapi import APIRouter, Query
 from app.api.deps import CurrentUser, DbSession, OptionalUser, Paging
 from app.core.exceptions import Unauthorized
 from app.core.response import ApiResponse, PageData, ok, paginated
-from app.schemas.catalog import CanteenOut, DishOut, MerchantOut, RandomDishOut, RatingOut, WantResult
+from app.schemas.catalog import CanteenOut, DishOut, DishTagOut, MerchantOut, RandomDishOut, RatingOut, WantResult
 from app.services import catalog_service, want_service
 
 router = APIRouter(tags=["食堂与菜品"])
@@ -65,9 +65,16 @@ async def search_dishes_route(
     db: DbSession,
     paging: Paging,
     keyword: str = Query("", max_length=50, description="按菜名或商家名模糊匹配，留空返回全部"),
+    tag: str = Query("", max_length=20, description="按标签精确过滤（白名单见 /dishes/tags），与 keyword 取交集"),
 ):
-    items, total = await catalog_service.search_dishes(db, keyword, paging.offset, paging.limit)
+    items, total = await catalog_service.search_dishes(db, keyword, paging.offset, paging.limit, tag=tag)
     return paginated(items, total, paging.page, paging.page_size)
+
+
+# 静态路径都要抢在 /dishes/{dish_id} 前面注册，否则会被路径参数吞成 422
+@router.get("/dishes/tags", response_model=ApiResponse[list[DishTagOut]], summary="标签清单（含在售菜品数）")
+async def dish_tags(db: DbSession):
+    return ok(await catalog_service.tags_summary(db))
 
 
 # 注意：/dishes/top 必须注册在 /dishes/{dish_id} 之前，否则会被路径参数吞掉（返回 422 而非榜单）

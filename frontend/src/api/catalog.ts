@@ -1,5 +1,5 @@
 import { get, post } from './request'
-import type { Canteen, Dish, Merchant, PageData, RandomDishResult, WantResult } from '@/types'
+import type { Canteen, Dish, DishTag, Merchant, PageData, RandomDishResult, WantResult } from '@/types'
 
 export function fetchCanteens() {
   return get<Canteen[]>('/canteens')
@@ -43,9 +43,14 @@ export function toggleWant(dishId: number) {
   return post<WantResult>(`/dishes/${dishId}/want`)
 }
 
-/** 按菜名或商家名模糊搜索；keyword 为空则返回全部上架菜品 */
-export function searchDishes(keyword: string, page = 1, pageSize = 20) {
-  return get<PageData<Dish>>('/dishes', { keyword, page, page_size: pageSize })
+/** 按菜名或商家名模糊搜索；keyword 为空则返回全部上架菜品。tag 与 keyword 取交集 */
+export function searchDishes(keyword: string, page = 1, pageSize = 20, tag = '') {
+  return get<PageData<Dish>>('/dishes', { keyword, tag, page, page_size: pageSize })
+}
+
+/** 标签清单（含每个标签的在售菜品数） */
+export function fetchDishTags() {
+  return get<DishTag[]>('/dishes/tags')
 }
 
 /** 按商家名模糊搜索；keyword 为空则返回全部商家（按综合评分倒序） */

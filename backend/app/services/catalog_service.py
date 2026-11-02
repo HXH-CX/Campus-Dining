@@ -5,16 +5,19 @@
 - 需要跨表字段时用显式 join 选列，配合 noload 关掉关系预加载，避免多余的 selectin 查询。
 """
 
+from collections import Counter
+
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
 from app.core.exceptions import NotFound
+from app.core.tags import DISH_TAGS
 from app.models.catalog import Canteen, Dish, Merchant
 from app.models.rating import Rating
 from app.models.social import Want
 from app.models.user import User
-from app.schemas.catalog import CanteenOut, DishOut, MerchantOut, RandomDishOut, RatingOut
+from app.schemas.catalog import CanteenOut, DishOut, DishTagOut, MerchantOut, RandomDishOut, RatingOut
 
 # 加权综合评分：SUM(avg_rating * rating_count) / SUM(rating_count)，只算上架菜品
 _OVERALL = func.coalesce(
@@ -40,11 +43,14 @@ async def list_canteens(db: AsyncSession) -> list[CanteenOut]:
 
 
 async def search_dishes(
-    db: AsyncSession, keyword: str, offset: int, limit: int
+    db: AsyncSession, keyword: str, offset: int, limit: int, tag: str | None = None
 ) -> tuple[list[DishOut], int]:
     """按菜名或商家名模糊搜索，只返回上架菜品。
 
     搜"兰州"能同时搜到「牛肉拉面」这类只带商家名的结果，比只匹配菜名好用。
+
+    tag 用 JSON_CONTAINS 精确匹配数组元素，而不是 LIKE '%辣%' —— 后者会把
+    「不辣」这种也捞进来，且无法区分「微辣」。keyword 与 tag 同时给时取交集。
     """
     keyword = keyword.strip()
     stmt = (
@@ -61,10 +67,36 @@ async def search_dishes(
         condition = or_(Dish.name.like(pattern), Merchant.name.like(pattern))
         stmt = stmt.where(condition)
         count_stmt = count_stmt.where(condition)
+    if tag and tag.strip():
+        # 注意传标量而不是 [tag]：MySQL 的 JSON_CONTAINS(target, candidate) 里
+        # candidate='"辣"' 才是"数组包含这个标量"，传 ["辣"] 变成"包含这个子数组"，永远匹配不到
+        tag_condition = Dish.tags.contains(tag.strip())
+        stmt = stmt.where(tag_condition)
+        count_stmt = count_stmt.where(tag_condition)
 
     total = int(await db.scalar(count_stmt) or 0)
     rows = (await db.execute(stmt.order_by(Dish.rating_count.desc(), Dish.id).offset(offset).limit(limit))).all()
     return [to_dish_out(d, m_name, c_name) for d, m_name, c_name in rows], total
+
+
+async def tags_summary(db: AsyncSession) -> list[DishTagOut]:
+    """标签清单 + 每个标签的在售菜品数。
+
+    计数在 Python 里做（先取 tags 列再 Counter），不写 JSON_TABLE：
+    菜品是几十到几百的量级，SQL 里展开 JSON 反而更难读；真要上量再换。
+
+    count=0 的标签也返回（不裁剪）：前端把它灰掉，用户能看见"这个标签存在
+    但还没菜"，比凭空少几个选项更好理解。
+    """
+    rows = (await db.execute(select(Dish.tags).where(Dish.is_available.is_(True)))).all()
+    counts: Counter[str] = Counter()
+    for (tags,) in rows:
+        for name in tags or []:
+            counts[name] += 1
+    return [
+        DishTagOut(name=item["name"], emoji=item["emoji"], group=item["group"], count=counts.get(item["name"], 0))
+        for item in DISH_TAGS
+    ]
 
 
 async def get_canteen(db: AsyncSession, canteen_id: int) -> CanteenOut:
@@ -333,4 +365,6 @@ def to_dish_out(dish: Dish, merchant_name: str, canteen_name: str) -> DishOut:
         avg_rating=float(dish.avg_rating),
         rating_count=dish.rating_count,
         is_available=dish.is_available,
+        # 老数据可能有 null（迁移前的行），统一成空数组，前端不用判空
+        tags=list(dish.tags or []),
     )

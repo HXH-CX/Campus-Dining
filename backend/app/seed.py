@@ -128,6 +128,31 @@ CATALOG: dict[str, list[tuple[str, list[str]]]] = {
     ],
 }
 
+# 菜品的口味/形态标签（白名单见 app/core/tags.py）。
+# 没写在这里的菜就是无标签——搜索时不参与标签筛选，详情页也不显示标签行。
+DISH_TAGS: dict[str, list[str]] = {
+    "麻辣烫（微辣）": ["辣", "汤"],
+    "番茄麻辣烫": ["汤", "清淡"],
+    "麻酱麻辣烫": ["汤", "小吃"],
+    "牛肉拉面": ["面食", "汤"],
+    "炒面片": ["面食", "重口"],
+    "凉拌牛肉": ["重口", "小吃"],
+    "招牌卤肉饭": ["米饭", "重口"],
+    "鸡腿饭": ["米饭"],
+    "红烧肉饭": ["米饭", "重口"],
+    "溏心蛋": ["小吃", "早饭"],
+    "宫保鸡丁": ["辣", "重口"],
+    "鱼香肉丝": ["辣", "重口"],
+    "辣子鸡": ["辣", "重口"],
+    "蒸饺": ["饺子", "早饭"],
+    "拌面": ["面食", "清淡"],
+    "炖罐": ["汤", "清淡"],
+    "扁肉": ["汤", "小吃"],
+    "鸡胸沙拉": ["清淡"],
+    "牛油果沙拉": ["清淡"],
+    "三明治": ["早饭", "小吃"],
+}
+
 # 评分：谁 -> 哪道菜 -> 几分
 RATINGS = [
     ("xiaoming", "麻辣烫（微辣）", 5),
@@ -263,9 +288,16 @@ async def seed() -> None:
                         )
                     ).scalar_one_or_none()
                     if dish is None:
-                        dish = Dish(name=dish_name, merchant_id=merchant.id)
+                        dish = Dish(
+                            name=dish_name,
+                            merchant_id=merchant.id,
+                            tags=DISH_TAGS.get(dish_name, []),
+                        )
                         session.add(dish)
                         await session.flush()
+                    elif not dish.tags:
+                        # 只在空标签时补：管理员后台改过的不要被 seed 覆盖
+                        dish.tags = DISH_TAGS.get(dish_name, [])
                     if not dish.image_url:
                         dish.image_url = ensure_cover(dish_name)
                     dish_by_name[dish_name] = dish

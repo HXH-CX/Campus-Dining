@@ -168,6 +168,17 @@ function onDeleted(id: number): void {
               <div class="tiny">{{ dish.rating_count }} 人打过分</div>
             </div>
           </div>
+          <div v-if="dish.tags?.length" class="tag-row">
+            <button
+              v-for="name in dish.tags"
+              :key="name"
+              type="button"
+              class="tag-chip"
+              @click="router.push({ name: 'search', query: { tag: name } })"
+            >
+              {{ name }}
+            </button>
+          </div>
           <el-tag v-if="!dish.is_available" type="info" size="small">已下架</el-tag>
         </div>
 
@@ -273,6 +284,31 @@ function onDeleted(id: number): void {
 .info {
   flex: 1;
   min-width: 0;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* 标签是可点的导航入口：点一下去搜同标签的菜，比静态展示有用 */
+.tag-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tag-chip:hover {
+  background: #ffe3d3;
 }
 
 .acts {

@@ -172,7 +172,12 @@ async def list_dishes(
 async def create_dish(db: AsyncSession, payload: DishCreate) -> DishOut:
     if await db.get(Merchant, payload.merchant_id) is None:
         raise NotFound("所属商家不存在")
-    dish = Dish(name=payload.name, merchant_id=payload.merchant_id, image_url=payload.image_url)
+    dish = Dish(
+        name=payload.name,
+        merchant_id=payload.merchant_id,
+        image_url=payload.image_url,
+        tags=payload.tags,
+    )
     db.add(dish)
     await db.commit()
     return await catalog_service.get_dish(db, dish.id)
@@ -190,6 +195,9 @@ async def update_dish(db: AsyncSession, dish_id: int, payload: DishUpdate) -> Di
         dish.name = payload.name
     if payload.image_url is not None:
         dish.image_url = payload.image_url
+    # tags 传 [] 表示清空，不传（None）表示不动——和 image_url 的语义不同，别合并
+    if payload.tags is not None:
+        dish.tags = payload.tags
     await db.commit()
     return await catalog_service.get_dish(db, dish_id)
 

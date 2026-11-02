@@ -10,10 +10,11 @@ import {
   adminSetDishAvailability,
   adminUpdateDish,
 } from '@/api/admin'
+import { fetchDishTags } from '@/api/catalog'
 import { uploadImage } from '@/api/upload'
 import ErrorState from '@/components/ErrorState.vue'
 import AppSkeleton from '@/components/AppSkeleton.vue'
-import type { Dish, Merchant } from '@/types'
+import type { Dish, DishTag, Merchant } from '@/types'
 
 const rows = ref<Dish[]>([])
 const merchants = ref<Merchant[]>([])
@@ -25,11 +26,19 @@ const error = ref<unknown>(null)
 
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
-const form = reactive<{ name: string; merchant_id: number | null; image_url: string | null }>({
+const form = reactive<{
+  name: string
+  merchant_id: number | null
+  image_url: string | null
+  tags: string[]
+}>({
   name: '',
   merchant_id: null,
   image_url: null,
+  tags: [],
 })
+/** 标签白名单（后端定），0 道菜的也列出来——管理员可能正要给某道菜补上 */
+const tagOptions = ref<DishTag[]>([])
 const fileList = ref<UploadUserFile[]>([])
 const submitting = ref(false)
 
@@ -47,11 +56,28 @@ async function load(): Promise<void> {
   }
 }
 
+/** 最多 4 个（与后端 MAX_TAGS_PER_DISH 一致），点满再点新标签给提示而不是静默忽略 */
+const MAX_TAGS = 4
+
+function toggleTag(name: string): void {
+  const index = form.tags.indexOf(name)
+  if (index >= 0) {
+    form.tags.splice(index, 1)
+    return
+  }
+  if (form.tags.length >= MAX_TAGS) {
+    ElMessage.warning(`最多选 ${MAX_TAGS} 个标签`)
+    return
+  }
+  form.tags.push(name)
+}
+
 function openCreate(): void {
   editingId.value = null
   form.name = ''
   form.merchant_id = merchants.value[0]?.id ?? null
   form.image_url = null
+  form.tags = []
   fileList.value = []
   dialogVisible.value = true
 }
@@ -61,6 +87,8 @@ function openEdit(row: Dish): void {
   form.name = row.name
   form.merchant_id = row.merchant_id
   form.image_url = row.image_url
+  // 复制一份，避免在弹窗里改到表格行上的原数组
+  form.tags = [...(row.tags ?? [])]
   fileList.value = row.image_url ? [{ name: 'cover', url: row.image_url }] : []
   dialogVisible.value = true
 }
@@ -98,6 +126,7 @@ async function submit(): Promise<void> {
         name: form.name.trim(),
         merchant_id: form.merchant_id,
         image_url: form.image_url,
+        tags: form.tags,
       })
       ElMessage.success('已保存')
     } else {
@@ -105,6 +134,7 @@ async function submit(): Promise<void> {
         name: form.name.trim(),
         merchant_id: form.merchant_id,
         image_url: form.image_url,
+        tags: form.tags,
       })
       ElMessage.success('已创建')
     }
@@ -146,6 +176,11 @@ onMounted(async () => {
     merchants.value = data.items
   } catch {
     // 商家下拉是新建菜品时才需要的，失败不阻塞列表
+  }
+  try {
+    tagOptions.value = await fetchDishTags()
+  } catch {
+    // 标签选择器同样只影响弹窗，失败不阻塞列表
   }
   await load()
 })
@@ -227,6 +262,21 @@ onMounted(async () => {
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="口味标签">
+          <div class="tag-picker">
+            <button
+              v-for="item in tagOptions"
+              :key="item.name"
+              type="button"
+              class="pick"
+              :class="{ on: form.tags.includes(item.name) }"
+              @click="toggleTag(item.name)"
+            >
+              {{ item.emoji }} {{ item.name }}
+            </button>
+          </div>
+          <div class="hint">可不选，最多 4 个。学生搜「辣」「面食」时就靠它们</div>
+        </el-form-item>
         <el-form-item label="菜品封面">
           <el-upload
             v-model:file-list="fileList"
@@ -268,6 +318,45 @@ h1 {
 .table {
   border-radius: var(--radius);
   overflow: hidden;
+}
+
+/* 标签选择：一排可点的小胶囊，比 el-checkbox 紧凑，且能一眼看清已选 */
+.tag-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pick {
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.pick:hover {
+  border-color: var(--brand);
+  color: var(--brand-dark);
+}
+
+.pick.on {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+
+.hint {
+  width: 100%;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-3);
 }
 
 .pager {

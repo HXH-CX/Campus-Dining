@@ -243,6 +243,44 @@ async function main() {
     ok('用户结果可直接关注', await tab.eval(`!!document.querySelector('.person .el-button')`))
     ok('排序/说明文案含粉丝数', String(await tab.eval(`document.querySelector('.person')?.innerText || ''`)).includes('粉丝'))
 
+    // ---------------------------------------------------------------- 标签筛选
+    console.log('== 标签筛选')
+    await tab.goto(WEB + '/search')
+    await tab.waitFor(`document.querySelectorAll('.tag-filter .chip').length > 1`, 10000)
+    const chipCount = await tab.eval(`document.querySelectorAll('.tag-filter .chip').length`)
+    ok('搜索页有标签筛选 chips', chipCount > 10, chipCount)
+    const offChips = await tab.eval(`document.querySelectorAll('.tag-filter .chip.off').length`)
+    ok('没菜的标签灰掉但仍可见', offChips >= 1, offChips)
+
+    const beforeCount = await tab.eval(`document.querySelectorAll('#pane-dishes .dish').length`)
+    await tab.eval(
+      `Array.from(document.querySelectorAll('.tag-filter .chip')).find(e => e.innerText.includes('辣'))?.click()`,
+    )
+    await tab.waitFor(`decodeURIComponent(location.search).includes('tag=')`, 6000)
+    await sleep(1200)
+    const tagged = await tab.eval(`({
+      count: document.querySelectorAll('#pane-dishes .dish').length,
+      url: decodeURIComponent(location.search),
+      on: Array.from(document.querySelectorAll('.tag-filter .chip.on')).map(e => e.innerText.replace(/\\s+/g, ' ').trim()),
+    })`)
+    ok('点标签后结果变少且写进 URL', tagged.count > 0 && tagged.count < beforeCount, { beforeCount, ...tagged })
+    ok('选中态只有该标签', tagged.on.length === 1 && String(tagged.on[0]).includes('辣'), tagged.on)
+
+    await tab.eval(
+      `Array.from(document.querySelectorAll('.tag-filter .chip.on')).find(e => e.innerText.includes('辣'))?.click()`,
+    )
+    await sleep(1300)
+    ok('再点一次取消筛选', !decodeURIComponent(String(await tab.eval(`location.search`))).includes('tag='))
+
+    // 从菜品详情页点标签，应带着参数跳到搜索页
+    await tab.goto(`${WEB}/dishes/${rated.dish.id}`)
+    await tab.waitFor(`document.querySelectorAll('.tag-chip').length > 0`, 8000)
+    const dishTags = await tab.eval(`Array.from(document.querySelectorAll('.tag-chip')).map(e => e.innerText.trim())`)
+    ok('菜品详情页显示标签', dishTags.length > 0, dishTags)
+    await tab.eval(`document.querySelectorAll('.tag-chip')[0]?.click()`)
+    await tab.waitFor(`location.pathname === '/search' && decodeURIComponent(location.search).includes('tag=')`, 8000)
+    ok('点菜品标签直达标签搜索', true)
+
     // ---------------------------------------------------------------- 发帖 + 结果面板
     console.log('== 发帖结果面板')
     await tab.goto(`${WEB}/create?dish_id=${rated.dish.id}`)
@@ -377,6 +415,23 @@ async function main() {
     await tab.goto(WEB + '/me')
     await sleep(1500)
     ok('个人中心 375px 无横向溢出', !(await tab.eval(`document.documentElement.scrollWidth > window.innerWidth`)))
+
+    // ---------------------------------------------------------------- 后台标签选择
+    // 放最后：这里会把 localStorage 的 token 换成管理员的，之后的断言都得重新登录
+    if (adminToken) {
+      console.log('== 后台标签选择')
+      await tab.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false })
+      await tab.eval(`localStorage.setItem('cf_token', ${JSON.stringify(adminToken)})`)
+      await tab.goto(WEB + '/admin/dishes')
+      await tab.waitFor(`document.querySelectorAll('.el-table__row').length > 0`, 12000)
+      // 按文案找按钮：操作列有三个 link 按钮，按结构取容易点到"下架"
+      await tab.eval(`Array.from(document.querySelectorAll('button')).find(b => b.innerText.trim() === '编辑')?.click()`)
+      await tab.waitFor(`document.querySelectorAll('.tag-picker .pick').length > 0`, 8000)
+      const pickTotal = await tab.eval(`document.querySelectorAll('.tag-picker .pick').length`)
+      ok('后台菜品弹窗有标签选择', pickTotal > 10, pickTotal)
+      const pickOn = await tab.eval(`document.querySelectorAll('.tag-picker .pick.on').length`)
+      ok('编辑时回显已选标签', pickOn >= 1, pickOn)
+    }
   } catch (error) {
     failed += 1
     console.error('\n执行中断：', error.message)

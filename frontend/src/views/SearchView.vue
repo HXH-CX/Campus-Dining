@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { searchDishes, searchMerchants } from '@/api/catalog'
+import { fetchDishTags, searchDishes, searchMerchants } from '@/api/catalog'
 import { fetchFeed } from '@/api/post'
 import { searchUsers, toggleFollow } from '@/api/user'
 import PostCard from '@/components/PostCard.vue'
@@ -9,7 +9,7 @@ import AppSkeleton from '@/components/AppSkeleton.vue'
 import ErrorState from '@/components/ErrorState.vue'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from '@/utils/feedback'
-import type { Dish, Merchant, Post, UserCard } from '@/types'
+import type { Dish, DishTag, Merchant, Post, UserCard } from '@/types'
 
 type Tab = 'dishes' | 'posts' | 'merchants' | 'users'
 
@@ -18,6 +18,9 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const keyword = ref(String(route.query.kw || ''))
+/** 当前选中的标签；空串表示不限 */
+const activeTag = ref(String(route.query.tag || ''))
+const tags = ref<DishTag[]>([])
 const tab = ref<Tab>('dishes')
 const dishes = ref<Dish[]>([])
 const dishTotal = ref(0)
@@ -36,8 +39,11 @@ const followBusy = ref<number | null>(null)
 async function search(): Promise<void> {
   const kw = keyword.value.trim()
   // 只同步地址栏，不重复触发（watch 里做了对比）
-  if (String(route.query.kw || '') !== kw) {
-    await router.replace({ name: 'search', query: kw ? { kw } : {} })
+  const nextQuery: Record<string, string> = {}
+  if (kw) nextQuery.kw = kw
+  if (activeTag.value) nextQuery.tag = activeTag.value
+  if (route.query.kw !== nextQuery.kw || route.query.tag !== nextQuery.tag) {
+    await router.replace({ name: 'search', query: nextQuery })
   }
 
   loading.value = true
@@ -46,7 +52,7 @@ async function search(): Promise<void> {
     // 四个页签一次并行拿完：菜/帖子本来就各查一次，商家和用户各加一个轻查询，
     // 分成"点页签再查"会让每次切页签都闪一次骨架屏，得不偿失。
     const [dishPage, postPage, merchantPage, userPage] = await Promise.all([
-      searchDishes(kw, 1, 24),
+      searchDishes(kw, 1, 24, activeTag.value),
       fetchFeed({ keyword: kw, page: 1, page_size: 10 }),
       searchMerchants(kw, 1, 12),
       searchUsers(kw, 1, 12),
@@ -98,6 +104,27 @@ async function onFollow(user: UserCard): Promise<void> {
   }
 }
 
+async function loadTags(): Promise<void> {
+  try {
+    tags.value = await fetchDishTags()
+  } catch {
+    // 标签是筛选增强，拿不到就不显示这排 chip，不影响搜索本身
+    tags.value = []
+  }
+}
+
+function pickTag(name: string): void {
+  // 再点一次同一个标签 = 取消筛选
+  activeTag.value = activeTag.value === name ? '' : name
+  void search()
+}
+
+function clearTag(): void {
+  if (!activeTag.value) return
+  activeTag.value = ''
+  void search()
+}
+
 function onLiked(payload: { id: number; liked: boolean; like_count: number }): void {
   const target = posts.value.find((item) => item.id === payload.id)
   if (target) {
@@ -112,17 +139,21 @@ function onDeleted(id: number): void {
 }
 
 watch(
-  () => route.query.kw,
-  (value) => {
-    const next = String(value || '')
-    if (next !== keyword.value) {
-      keyword.value = next
-      void search()
-    }
+  () => [route.query.kw, route.query.tag],
+  ([kw, tag]) => {
+    const nextKw = String(kw || '')
+    const nextTag = String(tag || '')
+    if (nextKw === keyword.value && nextTag === activeTag.value) return
+    keyword.value = nextKw
+    activeTag.value = nextTag
+    void search()
   },
 )
 
-onMounted(search)
+onMounted(() => {
+  void loadTags()
+  void search()
+})
 </script>
 
 <template>
@@ -143,10 +174,28 @@ onMounted(search)
 
     <el-tabs v-model="tab" class="tabs">
       <el-tab-pane :label="`菜品 ${dishTotal}`" name="dishes">
+        <!-- 标签筛选：一排常驻，0 道菜的标签灰掉但仍可见（用户能知道"这类菜还没人录"） -->
+        <div v-if="tags.length" class="tag-filter">
+          <button type="button" class="chip" :class="{ on: !activeTag }" @click="clearTag">全部</button>
+          <button
+            v-for="item in tags"
+            :key="item.name"
+            type="button"
+            class="chip"
+            :class="{ on: activeTag === item.name, off: !item.count && activeTag !== item.name }"
+            :disabled="!item.count && activeTag !== item.name"
+            @click="pickTag(item.name)"
+          >
+            {{ item.emoji }} {{ item.name }}
+            <span class="n">{{ item.count }}</span>
+          </button>
+        </div>
+
         <AppSkeleton v-if="loading" variant="card" :count="6" />
         <ErrorState v-else-if="error" :error="error" title="搜索失败了" @retry="search" />
         <div v-else-if="!dishes.length" class="card empty">
-          {{ searched ? '没搜到相关菜品，换个词试试' : '输入关键词开始搜索' }}
+          <template v-if="activeTag">「{{ activeTag }}」这个标签下还没有菜，换个标签看看</template>
+          <template v-else>{{ searched ? '没搜到相关菜品，换个词试试' : '输入关键词开始搜索' }}</template>
         </div>
         <div v-else class="grid">
           <div
@@ -287,6 +336,51 @@ onMounted(search)
 .score {
   color: var(--brand-dark);
   font-weight: 700;
+}
+
+/* ---- 标签筛选 ---- */
+.tag-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.chip {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.chip:hover:not(:disabled) {
+  border-color: var(--brand);
+  color: var(--brand-dark);
+}
+
+.chip.on {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* 灰掉但仍可读：说明"这个标签存在，只是暂时没菜" */
+.chip.off {
+  color: var(--text-3);
+  cursor: not-allowed;
+}
+
+.chip .n {
+  margin-left: 2px;
+  font-size: 11px;
+  opacity: 0.7;
 }
 
 /* 商家卡片没有真实 logo，用首字占位，比空白方块像样 */

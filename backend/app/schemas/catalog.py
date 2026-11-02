@@ -3,7 +3,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.core.tags import clean_tags
 
 
 # ---------------------------------------------------------------- 输出
@@ -34,9 +36,20 @@ class DishOut(BaseModel):
     avg_rating: float
     rating_count: int
     is_available: bool
+    # 口味/形态标签，白名单见 app/core/tags.py
+    tags: list[str] = Field(default_factory=list)
     # 想吃清单相关：只有菜品详情会填真值，列表接口留默认值（列表不展示这两个字段）
     want_count: int = 0
     is_wanted: bool = False
+
+
+class DishTagOut(BaseModel):
+    """标签清单项：前端据此渲染筛选 chips，count 用来把没菜的标签灰掉。"""
+
+    name: str
+    emoji: str
+    group: str
+    count: int = Field(default=0, description="挂了这个标签的在售菜品数")
 
 
 class WantResult(BaseModel):
@@ -99,12 +112,26 @@ class DishCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     merchant_id: int
     image_url: str | None = Field(default=None, max_length=255)
+    tags: list[str] = Field(default_factory=list, description="白名单见 /dishes/tags")
+
+    @field_validator("tags")
+    @classmethod
+    def _check_tags(cls, value: list[str]) -> list[str]:
+        # 抛 ValueError → 全局处理器转 400，不在 schema 里造 HTTP 异常
+        return clean_tags(value)
 
 
 class DishUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     merchant_id: int | None = None
     image_url: str | None = Field(default=None, max_length=255)
+    # 不传 = 不动；传 [] = 清空。靠 model_fields_set 区分
+    tags: list[str] | None = None
+
+    @field_validator("tags")
+    @classmethod
+    def _check_tags(cls, value: list[str] | None) -> list[str] | None:
+        return None if value is None else clean_tags(value)
 
 
 class DishAvailabilityUpdate(BaseModel):

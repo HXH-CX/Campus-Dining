@@ -57,7 +57,8 @@
 | GET | `/merchants/{id}` | 商家详情（综合评分、菜品数） |
 | GET | `/merchants/{id}/dishes` | 商家菜品列表（`?include_unavailable=false` 默认只返回上架） |
 | GET | `/merchants/{id}/posts` | 该商家下所有帖子的分页流 |
-| GET | `/dishes` | 菜品搜索：`?keyword=` 按菜名**或商家名**模糊匹配，只返回上架菜品；留空返回全部 |
+| GET | `/dishes` | 菜品搜索：`?keyword=` 按菜名**或商家名**模糊匹配、`?tag=` 按标签精确过滤（两者取交集），只返回上架菜品；留空返回全部。返回项含 `tags: string[]` |
+| GET | `/dishes/tags` | 标签清单 + 每个标签的在售菜品数：`[{name, emoji, group, count}]`。`count=0` 的也返回（前端灰掉而不是消失）。**必须注册在 `/dishes/{id}` 之前** |
 | GET | `/dishes/top` | 高分榜：`?min_rating=4&min_count=2&limit=6`，只取上架菜品，按均分倒序、同分看评价数。**必须注册在 `/dishes/{id}` 之前**，否则会被路径参数吞掉（返回 422） |
 | GET | `/dishes/random` | 随机抽一道菜（今天吃什么）：`?source=auto\|wants&exclude_id=`。`auto`（默认）先在高分池里抽、池空回退到全部上架菜品；`wants` 只在当前用户的想吃清单里抽（需登录，清单为空返回 404，**不回退**）。返回 `{dish, pool_size, source}`。同样**必须注册在 `/dishes/{id}` 之前** |
 | GET | `/dishes/{id}` | 菜品详情（含所属商家、食堂，以及 `want_count` / `is_wanted`） |
@@ -174,6 +175,7 @@ CREATE TABLE dishes (
     avg_rating DECIMAL(3,2) NOT NULL DEFAULT 0.00 COMMENT '冗余聚合，由 ratings 重算',
     rating_count INT NOT NULL DEFAULT 0,
     is_available TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1上架 0下架；下架不可被新帖关联',
+    tags JSON NOT NULL DEFAULT ('[]') COMMENT '口味/形态标签数组，白名单见 core/tags.py',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_merchant (merchant_id),
     CONSTRAINT fk_dish_merchant FOREIGN KEY (merchant_id) REFERENCES merchants(id)
@@ -518,3 +520,22 @@ WHERE r.user_id = :uid AND r.updated_at >= NOW() - INTERVAL 30 DAY;
 - 顶栏的「写食评」按钮在窄屏隐藏（`.write-btn`），避免和底部主按钮重复。
 
 这是**布局层**能力，`AdminLayout` 不引入；登录/注册页是顶层路由，也不在 `DefaultLayout` 内，自然没有底部栏。
+
+## 3.13 菜品标签（口味 / 形态）
+
+### 3.13.1 为什么是"白名单 + JSON 列"
+- **白名单而不是自由标签**：MVP 不做审核，开放填写立刻会出现「辣」「微辣」「中辣」「有点辣」四种写法，搜「辣」搜不全。词表放 `app/core/tags.py`，管理端只能选。
+- **JSON 数组而不是逗号串**：逗号串只能 `LIKE '%辣%'`，会把「不辣」「微辣」一起捞进来，且无法精确表达"含这个标签"。JSON 列走 `JSON_CONTAINS(tags, '"辣"')`，按元素精确匹配。
+- **存中文名而不是 key**：标签本身就是短中文词，没有改名需求，少一层映射。将来真要改名，`UPDATE ... SET tags = JSON_REPLACE(...)` 也比维护一套 key 表简单。
+
+### 3.13.2 查询与写入
+- 过滤：`Dish.tags.contains(tag)`（SQLAlchemy 在 MySQL 上生成 `JSON_CONTAINS`）。**传标量，不要传 `[tag]`** —— `candidate='"辣"'` 才是"数组包含这个标量"，传 `["辣"]` 变成"包含这个子数组"，永远匹配不到（这里踩过一次，返回 0 条）。
+- 与 `keyword` 同时给时取交集，两者都在 `stmt` 与 `count_stmt` 上各加一次条件。
+- 写入：`DishCreate.tags` 默认 `[]`；`DishUpdate.tags` 默认 `None`，**`None` = 不动、`[]` = 清空**。校验在 pydantic `field_validator` 里做（`clean_tags` 抛 `ValueError` → 全局处理器转 400），不要在 service 里造 HTTP 异常。
+- 上限 4 个：多了筛选就失去区分度（全是标签等于没有标签）。
+
+### 3.13.3 接口与前端
+- `GET /dishes/tags` 返回词表 + 每个标签的在售菜品数。**计数在 Python 里做**（取 `tags` 列后 `Counter`），不写 `JSON_TABLE`——几十到几百道菜的量级，SQL 展开 JSON 只会更难读。
+- `count=0` 的标签照样返回，前端把它灰掉而不是隐藏：用户能看见"这类菜还没人录"，比选项凭空少几个更好理解。
+- 搜索页的 chips 一行常驻；再点一次同一个标签 = 取消筛选；筛选状态同步进 URL（`?tag=辣`），可以分享。
+- 菜品详情页的标签是**可点的导航入口**，点一下去搜同标签的菜，比静态展示有用。

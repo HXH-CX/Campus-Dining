@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, Numeric, String, text
+from sqlalchemy import JSON, BigInteger, Boolean, ForeignKey, Integer, Numeric, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -69,6 +69,12 @@ class Dish(Base, TimestampMixin):
     )
     is_available: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("1"), comment="1上架 0下架"
+    )
+    # 口味/形态标签，白名单见 app/core/tags.py。
+    # 用 JSON 数组而不是逗号串：查询走 JSON_CONTAINS 精确匹配元素，
+    # 逗号串只能 LIKE '%辣%'，会把「不辣」也算进去。
+    tags: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default=text("('[]')"), comment="标签数组"
     )
 
     merchant: Mapped[Merchant] = relationship(lazy="selectin")
