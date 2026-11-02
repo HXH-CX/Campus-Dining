@@ -10,42 +10,47 @@
 ## 界面
 
 <p align="center">
-  <img src="docs/screenshots/home.png" alt="首页" width="880">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/home.png" alt="首页" width="880">
 </p>
 <p align="center"><sub>首页：高分榜、今日热榜、图文流（最新 / 最热 / 关注）</sub></p>
 
 <p align="center">
-  <img src="docs/screenshots/dish.png" alt="菜品详情" width="435">
-  <img src="docs/screenshots/random.png" alt="今天吃什么" width="435">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/dish.png" alt="菜品详情" width="435">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/random.png" alt="今天吃什么" width="435">
 </p>
 <p align="center"><sub>左：菜品详情（口味标签、想吃、这家还有）　右：一键随机抽一道菜，可换、可直接去吃</sub></p>
 
 <p align="center">
-  <img src="docs/screenshots/search.png" alt="搜索" width="435">
-  <img src="docs/screenshots/create.png" alt="发帖" width="435">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/search.png" alt="搜索" width="435">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/create.png" alt="发帖" width="435">
 </p>
 <p align="center"><sub>左：四页签搜索 + 口味标签筛选（还没菜的标签置灰）　右：发帖必须绑菜品并打分</sub></p>
 
 <p align="center">
-  <img src="docs/screenshots/notifications.png" alt="通知中心" width="435">
-  <img src="docs/screenshots/profile-liked.png" alt="我赞过的" width="435">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/notifications.png" alt="通知中心" width="435">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/profile-liked.png" alt="我赞过的" width="435">
 </p>
 <p align="center"><sub>左：通知中心（被赞 / 被评论 / 被关注）　右：个人主页「我赞过的」，仅本人可见</sub></p>
 
 <p align="center">
-  <img src="docs/screenshots/admin.png" alt="管理后台" width="880">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/admin.png" alt="管理后台" width="880">
 </p>
 <p align="center"><sub>管理后台：今日新增、近 7 天发帖趋势、待关注项（上架没人评 / 没有在售菜的商家）</sub></p>
 
 <p align="center">
-  <img src="docs/screenshots/mobile-home.png" alt="移动端首页" width="235">
-  <img src="docs/screenshots/mobile-dish.png" alt="移动端菜品页" width="235">
-  <img src="docs/screenshots/mobile-notifications.png" alt="移动端通知" width="235">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/mobile-home.png" alt="移动端首页" width="235">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/mobile-dish.png" alt="移动端菜品页" width="235">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/mobile-notifications.png" alt="移动端通知" width="235">
 </p>
 <p align="center"><sub>移动端：底部导航 + 中间抬起的发帖键，≤900px 顶栏搜索收成图标</sub></p>
 
 > 截图由 `frontend/scripts/shots.mjs` 用真浏览器生成（同一套 CDP 驱动，不依赖 puppeteer），
 > 改了样式跑一遍即可全套重截，不用手工一张张换。
+>
+> **图片走 jsDelivr 镜像而不是仓库相对路径**：GitHub 会把相对路径改写成
+> `raw.githubusercontent.com`，该域名在部分网络环境下不可达，README 就会整片破图
+> （页面能开、图片全挂）。`gcore.jsdelivr.net` 是同一份内容、可正常访问的副本。
+> 重截后如果发现图没更新，把地址里的 `@main` 换成新的 commit sha，或在末尾加 `?v=2` 破缓存。
 
 ## 功能
 
@@ -233,7 +238,7 @@ npm run e2e                     # 41 项：真浏览器走一遍关键交互
 | `Research.md` | 竞品分析、需求取舍、已识别风险 |
 | `PDR.md` | 功能范围、页面清单、业务规则、决策记录 |
 | `TechDesigh.md` | 数据模型、API 契约、错误码、聚合策略、前端约定 |
-| `AGENTS.md` | 协作边界与 38 条「实现时不得偏离」的技术契约 |
+| `AGENTS.md` | 协作边界与 42 条「实现时不得偏离」的技术契约 |
 
 ## 已知边界（MVP 有意不做）
 
