@@ -5,7 +5,7 @@ import type { UploadRequestOptions, UploadUserFile } from 'element-plus'
 import { ElMessage } from '@/utils/feedback'
 import { fetchCanteens, fetchCanteenMerchants, fetchMerchantDishes, fetchTopDishes } from '@/api/catalog'
 import { createPost } from '@/api/post'
-import { uploadImage } from '@/api/upload'
+import { UPLOAD_MAX_MB, uploadImage } from '@/api/upload'
 import { humanSize } from '@/utils/image'
 import ErrorState from '@/components/ErrorState.vue'
 import AppSkeleton from '@/components/AppSkeleton.vue'
@@ -136,10 +136,10 @@ function beforeUpload(file: File): boolean {
     ElMessage.warning('只支持 jpg / png / webp')
     return false
   }
-  // 上限放宽到 20MB：图片会在上传前压到 1600px 长边，手机原图（3-5MB）根本到不了这个量，
-  // 设成 20MB 只是拦明显错误的文件（比如误选了视频）。
-  if (file.size > 20 * 1024 * 1024) {
-    ElMessage.warning('单张图片不能超过 20MB')
+  // 原图上限直接取服务端限制（10MB），选之前就拦住，不用等压缩完才发现传不上去。
+  // 压缩后一般只有几百 KB，这个数字只对"压缩失败退回原图"和"误选了视频"有意义。
+  if (file.size > UPLOAD_MAX_MB * 1024 * 1024) {
+    ElMessage.warning(`单张图片不能超过 ${UPLOAD_MAX_MB}MB，可以先在相册里裁剪一下`)
     return false
   }
   return true

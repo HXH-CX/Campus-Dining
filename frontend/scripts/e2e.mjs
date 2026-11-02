@@ -280,6 +280,36 @@ async function main() {
     await sleep(400)
     ok('Esc 关闭大图', !(await tab.eval(`!!document.querySelector('.viewer')`)))
 
+    // ---------------------------------------------------------------- 同店其他菜
+    console.log('== 同店其他菜')
+    // 找一家有 3 道以上在售菜的商家：只有菜品够多，才能同时验证"排除自己"和"排序"
+    let siblingDish = null
+    const canteens = await api('GET', '/canteens')
+    for (const canteen of canteens.data || []) {
+      const merchants = await api('GET', `/canteens/${canteen.id}/merchants`)
+      for (const merchant of merchants.data || []) {
+        const dishes = await api('GET', `/merchants/${merchant.id}/dishes`)
+        if ((dishes.data || []).length >= 3) {
+          siblingDish = dishes.data[0]
+          break
+        }
+      }
+      if (siblingDish) break
+    }
+    if (siblingDish) {
+      await tab.goto(`${WEB}/dishes/${siblingDish.id}`)
+      await tab.waitFor(`document.querySelectorAll('.sib').length > 0`, 8000)
+      const sib = await tab.eval(`({
+        count: document.querySelectorAll('.sib').length,
+        names: Array.from(document.querySelectorAll('.sib-name')).map(e => e.innerText.trim()),
+        scores: Array.from(document.querySelectorAll('.sib-score')).map(e => e.innerText.trim()),
+      })`)
+      ok('菜品页有「这家还有」', sib.count > 1, sib)
+      ok('同店推荐不含当前这道', !sib.names.includes(siblingDish.name), { cur: siblingDish.name, names: sib.names })
+      const nums = sib.scores.map((s) => Number.parseFloat(s) || 0)
+      ok('同店推荐按均分倒序', nums.every((v, i) => i === 0 || nums[i - 1] >= v), nums)
+    }
+
     // ---------------------------------------------------------------- 通知
     console.log('== 通知中心')
     await tab.goto(WEB + '/notifications')

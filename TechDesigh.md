@@ -44,7 +44,7 @@
 ### 3.3.2 图片上传
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/uploads/images` 🔒 | `multipart/form-data` 单文件上传，返回 `{"url": "/uploads/2026/10/xxx.jpg"}`。服务端限制 5MB、仅 jpg/jpeg/png/webp，并校验文件头魔数；前端会先压缩（见 3.12.3）。发帖/改头像时引用该 URL |
+| POST | `/uploads/images` 🔒 | `multipart/form-data` 单文件上传，返回 `{"url": "/uploads/2026/10/xxx.jpg"}`。服务端限制 **10MB**（`UPLOAD_MAX_MB`）、仅 jpg/jpeg/png/webp，并校验文件头魔数；前端会先压缩（见 3.12.3）。发帖/改头像时引用该 URL |
 
 > **形态定稿**：图片**先上传、后引用**。发帖接口走 JSON body 携带 `images: [url...]`，不使用 multipart 混合提交，避免前端 FormData 与 Pydantic 校验打架。
 
@@ -493,10 +493,11 @@ WHERE r.user_id = :uid AND r.updated_at >= NOW() - INTERVAL 30 DAY;
 - 优先编码 WebP，浏览器不支持 WebP 编码时 `toBlob` 会回落成 PNG/JPEG，按 `blob.type` 换后缀 —— **后端会校验扩展名与文件头魔数一致，名字对不上会被拒**。
 - 三条放弃条件：类型不是 jpg/png/webp、体积 ≤300KB 且尺寸不超标、压缩结果反而更大 —— 都退回原图。
 - **任何异常都退回原图**：压缩是优化不是前置条件，不能因为它导致传不上去。
-- 但"压缩没生效 + 文件超过 5MB"会在 `uploadImage()` 里提前拦下（抛"图片压缩失败且超过 5MB"），
-  避免发一个注定被服务端 400 拒掉的请求。
+- 不管压缩成功与否，只要**最终要传的那个文件**超过服务端上限就提前拦下（`uploadImage()` 抛错并带上实际体积），
+  避免发一个注定被服务端 400 拒掉的请求。压缩"成功"但体积仍超标是可能的（扫描件 PNG 转 WebP 也压不下去）。
 
 实测（Chrome 无头，带噪点 4000×3000 JPEG）：5.8MB → 360KB WebP，长边 1600，前端上传接口返回 `code=0`，静态访问 `Content-Type: image/webp`。
 
-配套调整：前端 `beforeUpload` 的体积上限从 5MB 放宽到 20MB（压缩在后，5MB 只会误伤手机原图），
-服务端 `UPLOAD_MAX_MB` 保持 5 —— 压缩后的文件远低于它，留作兜底。
+体积上限统一为 **10MB**，三处必须一致：`backend/app/core/config.py` 的 `UPLOAD_MAX_MB`（及 `.env`）、
+`frontend/src/api/upload.ts` 导出的 `UPLOAD_MAX_MB`、以及发帖页 / 编辑弹窗的 `beforeUpload`（后者直接引用前者）。
+10MB 不是为了放行大图，而是给"压缩失败退回原图"留余量：手机直拍原图 3-8MB，设 5MB 会把正常照片挡在门外。

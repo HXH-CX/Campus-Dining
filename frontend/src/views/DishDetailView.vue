@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from '@/utils/feedback'
-import { fetchDish, fetchDishRatings, toggleWant } from '@/api/catalog'
+import { fetchDish, fetchDishRatings, fetchMerchantDishes, toggleWant } from '@/api/catalog'
 import { fetchDishPosts } from '@/api/post'
 import { isNotFound } from '@/api/request'
 import PostCard from '@/components/PostCard.vue'
@@ -30,6 +30,29 @@ const postLoading = ref(false)
 const error = ref<unknown>(null)
 const wanting = ref(false)
 const coverOpen = ref(false)
+/**
+ * 同店其他菜。
+ *
+ * 看完一道菜，下一个念头几乎必然是"这家还有什么"——此前只能回退到商家页，
+ * 多两次点击。放在页面底部而不是塞进 Tab：它是"顺便看看"，不该和食评抢位置。
+ * 只取 6 道，剩下的引导去商家页。
+ */
+const siblings = ref<Dish[]>([])
+
+async function loadSiblings(merchantId: number): Promise<void> {
+  try {
+    const list = await fetchMerchantDishes(merchantId)
+    siblings.value = list
+      // 接口已经只返在售菜品，这里去掉当前这道
+      .filter((item) => item.id !== dishId.value)
+      // 均分高的在前，同分看人数（3 人 4.67 比 1 人 5.0 可信），没人评过的沉底
+      .sort((a, b) => b.avg_rating - a.avg_rating || b.rating_count - a.rating_count)
+      .slice(0, 6)
+  } catch {
+    // 附加信息，拿不到就不显示，绝不能因为它影响菜品主体和食评
+    siblings.value = []
+  }
+}
 
 /** 想吃：一个接口翻转状态，返回最新的想吃人数，不需要前端猜 */
 async function handleWant(): Promise<void> {
@@ -80,7 +103,8 @@ async function load(): Promise<void> {
     dish.value = d
     posts.value = p.items
     postTotal.value = p.total
-    await loadRatings()
+    // 同店其他菜要等拿到 merchant_id 才能查，所以是第二跳；和打分记录并行发
+    await Promise.all([loadRatings(), loadSiblings(d.merchant_id)])
   } catch (e) {
     if (isNotFound(e)) {
       void router.replace({ name: 'not-found' })
@@ -194,6 +218,36 @@ function onDeleted(id: number): void {
           </div>
         </el-tab-pane>
       </el-tabs>
+
+      <section v-if="siblings.length" class="siblings">
+        <div class="sib-head">
+          <h2>这家还有</h2>
+          <router-link
+            class="tiny more-link"
+            :to="{ name: 'merchant', params: { id: dish.merchant_id } }"
+          >
+            看全部 →
+          </router-link>
+        </div>
+        <div class="sib-scroll">
+          <div
+            v-for="item in siblings"
+            :key="item.id"
+            class="card sib"
+            @click="router.push({ name: 'dish', params: { id: item.id } })"
+          >
+            <img v-if="item.image_url" :src="item.image_url" :alt="item.name" loading="lazy" />
+            <div v-else class="sib-fallback">{{ item.name.slice(0, 1) }}</div>
+            <div class="sib-name">{{ item.name }}</div>
+            <div class="tiny sib-score">
+              <template v-if="item.rating_count">
+                {{ item.avg_rating.toFixed(1) }} · {{ item.rating_count }} 人
+              </template>
+              <template v-else>还没人评</template>
+            </div>
+          </div>
+        </div>
+      </section>
     </template>
   </div>
 </template>
@@ -322,5 +376,79 @@ h1 {
 
 .time {
   margin-left: auto;
+}
+
+/* ---- 同店其他菜 ---- */
+.siblings {
+  margin: 22px 0 8px;
+}
+
+.sib-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.sib-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.more-link {
+  color: var(--brand-dark);
+  text-decoration: none;
+}
+
+/* 横向滚动而不是换行：手机上一行滑动比堆三行更好点，也不会把页面拉得很长 */
+.sib-scroll {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.sib {
+  flex: 0 0 128px;
+  padding: 8px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.sib:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(120, 72, 30, 0.12);
+}
+
+.sib img,
+.sib-fallback {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #faf3ec;
+}
+
+.sib-fallback {
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  color: #c8a68b;
+  font-weight: 700;
+}
+
+.sib-name {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sib-score {
+  color: var(--text-3);
 }
 </style>

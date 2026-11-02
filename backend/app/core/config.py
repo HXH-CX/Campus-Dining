@@ -29,7 +29,9 @@ class Settings(BaseSettings):
     JWT_EXPIRE_DAYS: int = 7
 
     UPLOAD_DIR: str = "./uploads"
-    UPLOAD_MAX_MB: int = 5
+    # 10MB：前端会先压到 1600px 长边（通常 <500KB），这个上限是留给"压缩失败退回原图"的
+    # 手机直拍原图，别设 5MB——那样正常照片会被拒
+    UPLOAD_MAX_MB: int = 10
     UPLOAD_ALLOWED_EXT: str = "jpg,jpeg,png,webp"
 
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"

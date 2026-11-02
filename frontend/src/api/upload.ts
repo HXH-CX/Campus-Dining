@@ -7,8 +7,14 @@ export interface UploadOutcome extends UploadResult {
   compress?: CompressResult
 }
 
-/** 与服务端 UPLOAD_MAX_MB=5 对齐。压缩成功后远低于它，这里只兜"压缩没生效"的情况 */
-const SERVER_MAX_BYTES = 5 * 1024 * 1024
+/**
+ * 服务端单张上限，**与后端 `UPLOAD_MAX_MB` 保持一致**（默认 10）。
+ *
+ * 改这里的同时要改 `backend/app/core/config.py` 和 `.env`，否则会出现
+ * "前端放行、后端 400"或"前端误拦"。
+ */
+export const UPLOAD_MAX_MB = 10
+export const UPLOAD_MAX_BYTES = UPLOAD_MAX_MB * 1024 * 1024
 
 /**
  * 上传图片。**会先在浏览器端压缩**，再发 multipart。
@@ -18,9 +24,15 @@ const SERVER_MAX_BYTES = 5 * 1024 * 1024
  */
 export async function uploadImage(file: File, options: CompressOptions = {}): Promise<UploadOutcome> {
   const compress = await compressImage(file, options)
-  // 压缩没起作用（比如格式解不开）且超过服务端上限：提前拦下，别让用户等一个注定失败的请求
-  if (!compress.compressed && compress.file.size > SERVER_MAX_BYTES) {
-    throw new Error('图片压缩失败且超过 5MB，请换一张试试')
+  // 不管压缩成功与否，只看最终要传的那个文件：超了就提前拦下，
+  // 别让用户等一个注定 400 的请求（压缩"成功"但体积仍超标是可能的，比如扫描件 PNG 转 WebP）
+  if (compress.file.size > UPLOAD_MAX_BYTES) {
+    const mb = (compress.file.size / 1024 / 1024).toFixed(1)
+    throw new Error(
+      compress.compressed
+        ? `这张图压缩后还有 ${mb}MB，超过了 ${UPLOAD_MAX_MB}MB 上限，请裁剪后再试`
+        : `图片有 ${mb}MB，超过了 ${UPLOAD_MAX_MB}MB 上限，请裁剪后再试`,
+    )
   }
   const payload = await postFile(compress.file)
   return { ...payload, compress }

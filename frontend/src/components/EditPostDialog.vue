@@ -9,7 +9,7 @@ import { ref, watch } from 'vue'
 import type { UploadRequestOptions, UploadUserFile } from 'element-plus'
 import { ElMessage } from '@/utils/feedback'
 import { updatePost } from '@/api/post'
-import { uploadImage } from '@/api/upload'
+import { UPLOAD_MAX_MB, uploadImage } from '@/api/upload'
 import type { Post } from '@/types'
 
 const props = defineProps<{ modelValue: boolean; post: Post }>()
@@ -65,8 +65,8 @@ function beforeUpload(file: File): boolean {
     ElMessage.warning('只支持 jpg / png / webp')
     return false
   }
-  if (file.size > 20 * 1024 * 1024) {
-    ElMessage.warning('单张图片不能超过 20MB')
+  if (file.size > UPLOAD_MAX_MB * 1024 * 1024) {
+    ElMessage.warning(`单张图片不能超过 ${UPLOAD_MAX_MB}MB，可以先在相册里裁剪一下`)
     return false
   }
   return true
