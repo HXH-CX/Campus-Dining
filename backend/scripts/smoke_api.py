@@ -434,10 +434,15 @@ def main():
     temp["posts"].discard(post_id)
     print("== 后台删帖：热榜不能残留")
     # 热榜是进程内缓存（1 小时 TTL）。后台删帖曾经漏掉 invalidate，于是榜单上会挂一条
-    # 点进去 404 的帖子，最长一小时。这里走完整链路，防止这条路径再退化。
+    # 点进去 404 的帖子，最长一小时。
+    #
+    # 断言只验"榜上无死链"，不假设某个新帖一定在榜：热榜取 Top10，而种子的 created_at
+    # 是 CURRENT_TIMESTAMP——刚灌完种子的库（CI）里 8 条种子帖都在 24h 窗口内，且带
+    # 点赞评论、热度高于刚发的空帖，会把名额占满。依赖数据分布的断言在本地绿、CI 红。
     status, body = call("GET", "/posts/hot")
     hot_before = [p["id"] for p in body["data"]] if status == 200 else []
-    check("今日新帖进入热榜", post2_id in hot_before, {"hot": hot_before, "post": post2_id})
+    dead = [pid for pid in hot_before if call("GET", f"/posts/{pid}")[0] != 200]
+    check("热榜里的帖子详情都能打开（无死链）", status == 200 and not dead, {"hot": hot_before, "dead": dead})
 
     status, body = call("DELETE", f"/admin/posts/{post2_id}", token=admin)
     check("管理员应急删帖 200", status == 200, body)
