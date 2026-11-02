@@ -501,3 +501,20 @@ WHERE r.user_id = :uid AND r.updated_at >= NOW() - INTERVAL 30 DAY;
 体积上限统一为 **10MB**，三处必须一致：`backend/app/core/config.py` 的 `UPLOAD_MAX_MB`（及 `.env`）、
 `frontend/src/api/upload.ts` 导出的 `UPLOAD_MAX_MB`、以及发帖页 / 编辑弹窗的 `beforeUpload`（后者直接引用前者）。
 10MB 不是为了放行大图，而是给"压缩失败退回原图"留余量：手机直拍原图 3-8MB，设 5MB 会把正常照片挡在门外。
+
+### 3.12.4 响应式与移动端导航（`MobileTabBar.vue`）
+两个断点分工，不要合并：
+
+| 断点 | 变化 | 原因 |
+|---|---|---|
+| ≤900px | 顶栏搜索输入框（`.quick-search`，沿用 `.hide-sm`）换成 `.search-btn` 图标 | 输入框在手机上放不下，但搜索入口不能凭空消失——图标点进 `/search`，那页本身有完整输入框 |
+| ≤560px | 顶栏 `.nav` 整体隐藏，导航改为底部固定栏 `MobileTabBar`；`.shell` 补 `padding-bottom: calc(56px + env(safe-area-inset-bottom))` | 手机上顶栏要折两行，发帖入口被挤到第二行的横向滚动条里 |
+
+底部栏五项：首页 / 食堂 / 发帖 / 通知 / 我的。要点：
+- **发帖是按钮不是链接**（需要登录），高亮自己用 `route.name === 'create'` 判断，不能靠 `active-class`。
+- 发帖按钮用**绝对定位**（`bottom: 33px`）浮在栏上方，五个文字靠 `translateY(10px)` 补偿到同一水平线；如果把按钮塞进 flex 流里，文字会被顶得和其它 tab 不齐。
+- 未登录点发帖/通知/我的 → `router.push({ name: 'login', query: { redirect } })`，**不做禁用态**。
+- 通知角标复用 `notifyStore.unread`，与顶栏铃铛同一份状态，不要各拉一次接口。
+- 顶栏的「写食评」按钮在窄屏隐藏（`.write-btn`），避免和底部主按钮重复。
+
+这是**布局层**能力，`AdminLayout` 不引入；登录/注册页是顶层路由，也不在 `DefaultLayout` 内，自然没有底部栏。

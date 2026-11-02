@@ -348,6 +348,32 @@ async function main() {
     await tab.goto(WEB + '/')
     await sleep(1200)
     ok('首页 375px 无横向溢出', !(await tab.eval(`document.documentElement.scrollWidth > window.innerWidth`)))
+
+    const bar = await tab.eval(`({
+      visible: !!document.querySelector('.tabbar') && getComputedStyle(document.querySelector('.tabbar')).display !== 'none',
+      tabs: Array.from(document.querySelectorAll('.tabbar .txt')).map(e => e.innerText.trim()).join('/'),
+      navHidden: getComputedStyle(document.querySelector('.nav')).display === 'none',
+      searchIcon: !!document.querySelector('.search-btn') && getComputedStyle(document.querySelector('.search-btn')).display !== 'none',
+    })`)
+    ok('移动端有底部导航且五项正确', bar.visible && bar.tabs === '首页/食堂/发帖/通知/我的', bar)
+    ok('移动端顶栏导航让位给底部栏', bar.navHidden, bar)
+    ok('移动端仍有搜索入口', bar.searchIcon, bar)
+
+    // 固定底栏最怕挡住页面最后一行，滚到底再量
+    await tab.eval(`window.scrollTo(0, document.body.scrollHeight)`)
+    await sleep(700)
+    ok(
+      '滚到底 footer 不被底部栏遮住',
+      await tab.eval(`
+        (() => {
+          const b = document.querySelector('.tabbar').getBoundingClientRect()
+          const f = document.querySelector('.footer').getBoundingClientRect()
+          return f.bottom <= b.top + 1
+        })()
+      `),
+    )
+    await tab.eval(`window.scrollTo(0, 0)`)
+    await sleep(300)
     await tab.goto(WEB + '/me')
     await sleep(1500)
     ok('个人中心 375px 无横向溢出', !(await tab.eval(`document.documentElement.scrollWidth > window.innerWidth`)))

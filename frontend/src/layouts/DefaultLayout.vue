@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifyStore } from '@/stores/notify'
+import MobileTabBar from '@/components/MobileTabBar.vue'
 import { ElMessage } from '@/utils/feedback'
 
 const auth = useAuthStore()
@@ -70,9 +71,16 @@ function handleCommand(command: string): void {
           </el-input>
         </div>
 
+        <!-- 窄屏没有输入框的位置，留一个图标跳到搜索页（那一页本来就有完整输入框） -->
+        <button class="search-btn" type="button" aria-label="搜索" @click="router.push({ name: 'search' })">
+          🔍
+        </button>
+
         <div class="actions">
           <template v-if="auth.isLoggedIn">
-            <el-button type="primary" round @click="router.push({ name: 'create' })">写食评</el-button>
+            <el-button class="write-btn" type="primary" round @click="router.push({ name: 'create' })">
+              写食评
+            </el-button>
             <router-link :to="{ name: 'notifications' }" class="bell" :title="notify.unread ? `${notify.unread} 条未读` : '通知'">
               <span class="bell-icon">🔔</span>
               <span v-if="notify.unread" class="bell-badge">{{ notify.unread > 99 ? '99+' : notify.unread }}</span>
@@ -110,6 +118,8 @@ function handleCommand(command: string): void {
     <footer class="footer">
       <span>校园食光 · 今天吃什么，交给同学们决定</span>
     </footer>
+
+    <MobileTabBar />
   </div>
 </template>
 
@@ -188,6 +198,25 @@ function handleCommand(command: string): void {
 
 .quick-search {
   width: 180px;
+}
+
+/* 输入框在 900px 以下会被 .hide-sm 收掉，这时换成图标，保证搜索入口不消失 */
+.search-btn {
+  display: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.search-btn:hover {
+  background: var(--brand-soft);
 }
 
 .me {
@@ -274,32 +303,34 @@ main {
 }
 
 /*
- * 窄屏：品牌和导航挤在一行会把「食堂导航」挤成竖排（每个字一行）。
- * 这里让导航整体换到第二行并允许横向滚动，比缩字号更耐看。
+ * 窄屏分两段：
+ * - ≤900px：顶栏的搜索框换成图标，搜索入口不能凭空消失
+ * - ≤560px：导航整体挪到底部 tabbar，顶栏退化成单行的「品牌 + 搜索 + 账号」，
+ *   给内容留出高度。原先"导航换行 + 横向滚动"的写法在有了底部栏之后就重复了。
  */
+@media (max-width: 900px) {
+  .search-btn {
+    display: grid;
+    place-items: center;
+    /* 靠右贴住账号区：贴品牌会看起来像 logo 的一部分 */
+    margin-left: auto;
+  }
+
+  /* 搜索图标接管了 "推到右边" 的职责，账号区不再重复 */
+  .actions {
+    margin-left: 0;
+  }
+}
+
 @media (max-width: 560px) {
   .topbar-inner {
-    height: auto;
-    padding: 8px 12px;
-    gap: 8px;
-    flex-wrap: wrap;
+    height: 52px;
+    padding: 0 12px;
+    gap: 6px;
   }
 
   .nav {
-    order: 3;
-    flex: 1 0 100%;
-    gap: 2px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .nav::-webkit-scrollbar {
     display: none;
-  }
-
-  .nav-link {
-    padding: 5px 10px;
-    font-size: 13px;
   }
 
   .brand-text {
@@ -307,7 +338,21 @@ main {
   }
 
   .actions {
-    margin-left: auto;
+    gap: 4px;
+  }
+
+  /* 底部已有一个更大的发帖按钮，顶栏这个收起来，别让两个入口抢同一件事 */
+  .write-btn {
+    display: none;
+  }
+
+  /* 给底部固定栏让位，否则页面最后一行永远被挡住 */
+  .shell {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom));
+  }
+
+  .footer {
+    padding: 16px 12px 8px;
   }
 }
 </style>
