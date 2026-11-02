@@ -1,0 +1,52 @@
+# 一套命令起全栈：docker compose up --build
+# 前端在 http://localhost:8080 ，接口文档在 http://localhost:8000/docs
+#
+# 与本地 dev.py 的关系：dev.py 管的是"本机装好 Python/Node/MySQL 之后"，
+# 这份管的是"机器上只需要 Docker"。两条路都能跑，互不依赖。
+
+services:
+  mysql:
+    image: mysql:8.0
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: campus_foodie
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      # 后端要等它真的能连上再迁移，光看容器 running 没用
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: mysql+asyncmy://root:${MYSQL_ROOT_PASSWORD:-root}@mysql:3306/campus_foodie
+      # 换掉它，别把示例密钥带到任何公开环境
+      JWT_SECRET: ${JWT_SECRET:-compose-dev-secret-change-me}
+      DEBUG: "false"
+      UPLOAD_DIR: /app/uploads
+      CORS_ORIGINS: http://localhost:8080
+    volumes:
+      # 图片放卷里，容器重建不丢；种子生成的 SVG 封面也落在这里
+      - uploads:/app/uploads
+    ports:
+      # 暴露出来是为了直接看 /docs 和调接口；前端本身走 nginx 反代，不依赖这个端口
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql-data:
+  uploads:
