@@ -24,3 +24,8 @@ frontend/node_modules/.vite/
 
 # UI 回归脚本的失败截图
 frontend/.e2e-shots/
+
+# Agent 的本地会话笔记：属于本机工作状态，不是项目产物，不进仓库
+# 只忽略 memory/ 而不是整个 .workbuddy/——将来若有需要共享给团队的项目级 skills，
+# 一旦父目录被忽略，git 就不再往里走，例外的 ! 规则会失效。
+.workbuddy/memory/
