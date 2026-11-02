@@ -113,7 +113,7 @@ Research.md  PDR.md  TechDesigh.md  AGENTS.md   # 需求、设计、协作约束
 
 ## 快速开始
 
-前置：Python 3.10+、Node 18+、MySQL 8（本地 3306）。
+前置：Python 3.10+、Node 18+（**跑 e2e / 截图脚本要 Node 22+**，它们用全局 `WebSocket` 连 CDP）、MySQL 8（本地 3306）。
 
 ### 1. 建库
 

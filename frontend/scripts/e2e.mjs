@@ -141,6 +141,17 @@ class Tab {
 }
 
 async function main() {
+  // 全局 WebSocket 是 Node 22 才默认提供的（20 里藏在 --experimental-websocket 后面）。
+  // 不预检的话，报错只有一句 "WebSocket is not defined"，看不出是版本问题——
+  // 本地 Node 22 跑得好好的，一到 CI 才炸。
+  if (typeof WebSocket === 'undefined') {
+    console.error(
+      `Node ${process.version} 没有全局 WebSocket，需要 Node 22+。\n` +
+        'Node 20 可改用：node --experimental-websocket scripts/e2e.mjs',
+    )
+    process.exit(2)
+  }
+
   if (!(await waitServices())) {
     console.error(`\n前后端没起来。先跑：\n  cd backend && ./.venv/Scripts/python.exe -m uvicorn app.main:app --port 8000\n  cd frontend && npm run dev\n`)
     process.exit(2)
@@ -492,7 +503,22 @@ async function main() {
   } finally {
     if (ws) ws.close()
     chrome.kill()
-    fs.rmSync(profile, { recursive: true, force: true })
+    // 等进程真的退出再删目录：Chrome 刚被 kill 时还在往 profile 里写文件，
+    // 立刻 rmSync 会 ENOTEMPTY。清理失败也绝不能顶掉真正的报错——
+    // 之前 CI 上就是这样，一屏全是 rmdir 的堆栈，把 "WebSocket is not defined" 盖住了
+    await new Promise((resolve) => {
+      if (chrome.exitCode !== null || chrome.signalCode !== null) return resolve()
+      const timer = setTimeout(resolve, 3000)
+      chrome.once('exit', () => {
+        clearTimeout(timer)
+        resolve()
+      })
+    })
+    try {
+      fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    } catch (err) {
+      console.warn(`临时目录没删干净（不影响结果）：${profile} ${err.code ?? ''}`)
+    }
     // 清理测试帖：不删会越积越多，也会让首页多一条"e2e"文案
     if (createdPostId && adminToken) {
       const del = await api('DELETE', `/admin/posts/${createdPostId}`, null, adminToken)

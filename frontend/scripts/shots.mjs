@@ -157,6 +157,11 @@ class Tab {
 const IMAGES_SETTLED = `[...document.images].every((i) => i.complete)`
 
 async function main() {
+  // 同 e2e：全局 WebSocket 需要 Node 22+，提前说清楚
+  if (typeof WebSocket === 'undefined') {
+    console.error(`Node ${process.version} 没有全局 WebSocket，需要 Node 22+。`)
+    process.exit(2)
+  }
   if (!TOKEN_STUDENT || !TOKEN_ADMIN) {
     console.error('缺 token。先生成再跑：\n' +
       '  cd backend && .venv/Scripts/python.exe -c "from app.core.security import create_access_token;print(create_access_token(106)[0])"\n' +
@@ -303,7 +308,20 @@ async function main() {
     console.log(`\n共 ${fs.readdirSync(OUT).filter((f) => f.endsWith('.png')).length} 张 → ${OUT}`)
   } finally {
     chrome.kill()
-    fs.rmSync(profile, { recursive: true, force: true })
+    // 同 e2e：等进程退出再删，清理失败不顶掉真正的报错
+    await new Promise((resolve) => {
+      if (chrome.exitCode !== null || chrome.signalCode !== null) return resolve()
+      const timer = setTimeout(resolve, 3000)
+      chrome.once('exit', () => {
+        clearTimeout(timer)
+        resolve()
+      })
+    })
+    try {
+      fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    } catch (err) {
+      console.warn(`临时目录没删干净（不影响结果）：${profile} ${err.code ?? ''}`)
+    }
   }
 }
 
