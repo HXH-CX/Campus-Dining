@@ -57,6 +57,7 @@
 - **想吃清单**：菜品页「想吃」攒一份候选池，个人中心可查看和移除；发帖打分后自动划掉（吃过就不算想吃）
 - 菜品页底部「**这家还有**」：横滑看同店其他在售菜（均分高的在前，没人评过的沉底），点一下换一道，右上角「看全部」进商家页
 - 点赞、评论、关注（单向关注，双向自动标记「互关」）
+- **回复某条评论**：评论支持一层回复，列表里显示「回复 @某某」，点一下滚到被回复的那条；被回复者收到「回复了你的评论」通知——帖主不会因为别人在楼下互相接话被刷屏
 - **通知中心**：被赞 / 被评论 / 被关注都会落一条通知，顶栏铃铛显示未读数（60s 轮询，切到后台不轮）；点一条就标已读并跳到原帖或对方主页；取消点赞、取关、删评论、删帖都会把对应通知一起收回
 - 个人主页：称号、隐藏成就、帖子 / 评价 / 想吃 / 我赞过的 / 评论 / 关注 / 粉丝（「我赞过的」仅本人可见，取消点赞会立刻从列表消失）
 - 同一道菜重复打分**覆盖**原评分，不新增评价数——评分代表「我现在的看法」
@@ -73,9 +74,9 @@
 
 | 层 | 选型 |
 |---|---|
-| 前端 | Vue 3 + Vite + TypeScript + Vue Router + Pinia + Element Plus（按需引入，首屏 JS 131.7KB / gzip 50KB） |
+| 前端 | Vue 3 + Vite + TypeScript + Vue Router + Pinia + Element Plus（按需引入，首屏 JS 131.8KB / gzip 50KB） |
 | 后端 | FastAPI + SQLAlchemy 2.0 (async) + Alembic + MySQL 8 |
-| 认证 | JWT（HS256，7 天）+ bcrypt |
+| 认证 | JWT（HS256，7 天）+ bcrypt；登录失败限流，登出后按令牌版本吊销旧 token |
 | 图片 | 本地 `uploads/`，前端压缩后上传，服务端校验扩展名与文件头魔数 |
 
 ## 目录结构
@@ -91,6 +92,8 @@ backend/
     utils/        # 图片校验（MVP 为 Mock，预留 AI 接口）
   alembic/        # 迁移
   scripts/        # smoke_api.py（业务回归）、journey.py（前后端字段契约）
+  Dockerfile      # 容器：迁移 → 补种子 → 起 uvicorn
+  docker-entrypoint.sh
 frontend/
   src/
     api/          # 按域拆分的请求封装，统一解包 {code,message,data}
@@ -98,6 +101,9 @@ frontend/
     views/        # 前台 13 页 + admin/ 5 页
     utils/        # 错误分类、图片压缩、格式化
   scripts/        # e2e.mjs（真浏览器关键交互）、shots.mjs（生成 README 截图）
+  Dockerfile      # 构建 dist 后交给 nginx
+  nginx.conf      # 提供静态文件，并把 /api、/uploads 反代到后端
+docker-compose.yml # 仓库根：mysql + backend + frontend 一条命令起全栈
 dev.py            # 仓库根：一键启动（建 venv / 装依赖 / 等 MySQL / 迁移 / 灌种子 / 拉起前后端）
 start.bat         # 仓库根：Windows 入口（双击即可）
 start.sh          # 仓库根：macOS / Linux 入口
@@ -172,6 +178,20 @@ npm run dev                          # http://127.0.0.1:5173
 
 Vite 已把 `/api` 与 `/uploads` 代理到 `127.0.0.1:8000`，前端代码里不出现跨域地址。
 
+### 4. 用 Docker 起（机器上没有 Python / Node 时）
+
+```bash
+docker compose up --build
+```
+
+- 前端 http://localhost:8080 ，接口文档 http://localhost:8000/docs
+- MySQL 数据与 `uploads` 都在命名卷里：`docker compose down` 不丢数据，加 `-v` 才会清空
+- 端口用 8080 而不是 5173，是为了不和本地 `npm run dev` 抢
+
+容器里由 nginx 提供前端静态文件，并把 `/api`、`/uploads` 反代给后端，所以浏览器侧是同源请求；
+`client_max_body_size` 设成 12m，比后端的 10MB 上限略高——否则手机直拍的照片会先被 nginx 用 413 挡掉，
+用户看到的是"服务器错误"而不是"图片超过 10MB"。
+
 ## 演示账号
 
 `python -m app.seed` 会写入 9 个用户 / 2 个食堂 / 6 个商家 / 20 个菜品 / 8 条帖子 / 18 条评分。
@@ -189,16 +209,18 @@ Vite 已把 `/api` 与 `/uploads` 代理到 `127.0.0.1:8000`，前端代码里�
 
 ```bash
 cd backend
-python scripts/smoke_api.py     # 74 项：权限、聚合、称号、删除保护等业务逻辑
-python scripts/journey.py       # 162 项：按前端真实调用顺序验字段契约
+python scripts/smoke_api.py     # 98 项：权限、聚合、称号、删除保护、登录限流、令牌吊销、评论回复
+python scripts/journey.py       # 167 项：按前端真实调用顺序验字段契约
 
 cd ../frontend
-npm run e2e                     # 37 项：真浏览器走一遍关键交互
+npm run e2e                     # 41 项：真浏览器走一遍关键交互
 ```
 
 分工：
 - `smoke` 验「算得对不对」，`journey` 验「前端要的字段后端有没有」——接口一改先跑 `journey`；
-- `e2e` 验「点得对不对」：首页 / 关注流 / 搜索四页签 / 口味标签筛选 / 发帖结果面板 / 大图预览 / 同店其他菜 / 通知 / 个人中心 / 后台标签勾选 / 375px 不溢出。它用 CDP 驱动本机 Chrome，**不需要装 puppeteer**，失败会截图到 `frontend/.e2e-shots/`。
+- `e2e` 验「点得对不对」：首页 / 关注流 / 搜索四页签 / 口味标签筛选 / 发帖结果面板 / 大图预览 / 评论回复 / 同店其他菜 / 通知 / 个人中心 / 后台标签勾选 / 375px 不溢出。它用 CDP 驱动本机 Chrome，**不需要装 puppeteer**，失败会截图到 `frontend/.e2e-shots/`。
+
+三套也跑在 CI 上（`.github/workflows/ci.yml`）：push 与 PR 会自动起一个 MySQL 服务、建表灌种子、跑完接口与浏览器回归——不用靠人记得在本地手跑。
 
 `e2e` 会真的发一条帖子再删掉；为保证菜品均分不被测试数据带偏，它挑的是「当前账号已评过、且分数相同」的菜，覆盖后聚合值不变。
 
@@ -209,7 +231,7 @@ npm run e2e                     # 37 项：真浏览器走一遍关键交互
 | `Research.md` | 竞品分析、需求取舍、已识别风险 |
 | `PDR.md` | 功能范围、页面清单、业务规则、决策记录 |
 | `TechDesigh.md` | 数据模型、API 契约、错误码、聚合策略、前端约定 |
-| `AGENTS.md` | 协作边界与 34 条「实现时不得偏离」的技术契约 |
+| `AGENTS.md` | 协作边界与 38 条「实现时不得偏离」的技术契约 |
 
 ## 已知边界（MVP 有意不做）
 
@@ -218,3 +240,7 @@ npm run e2e                     # 37 项：真浏览器走一遍关键交互
 - **不做交易**：无点单、支付、优惠
 - **菜品被引用后不可物理删除**，只能下架（`is_available=0`），历史帖子与评分完整保留
 - 图片存放在本地磁盘，未接对象存储
+- **登录限流是进程内计数**（同一用户名 5 次 / 同一 IP 20 次，15 分钟窗口）：单进程够用，
+  多 worker 部署时各算各的，实际阈值会被放大；真上多实例要换成 Redis 的 `INCR + EXPIRE`
+- **不做找回密码流程**：密码规则（≥8 位、含字母数字）已经提上去了，但没有邮箱/短信找回，
+  忘了只能找管理员改库

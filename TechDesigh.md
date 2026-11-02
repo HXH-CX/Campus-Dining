@@ -37,9 +37,12 @@
 ### 3.3.1 认证模块
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/auth/register` | 学生注册（username/nickname/password） |
-| POST | `/auth/login` | 登录，返回 JWT Token |
+| POST | `/auth/register` | 学生注册（username/nickname/password）。密码 **≥8 位且含字母和数字**，注册成功直接返回 token |
+| POST | `/auth/login` | 登录，返回 JWT Token。失败按「用户名 5 次 / IP 20 次（15 分钟窗口）」限流，锁定期间返回 **42901** |
+| POST | `/auth/logout` 🔒 | 登出：`users.token_version + 1`，当前及此前签发的 token 全部失效 |
 | GET | `/users/me` 🔒 | 当前用户信息（含称号、隐藏称号、计数） |
+
+> Token 里带 `ver` 声明，与 `users.token_version` 比对；不一致即 401。旧 token 没有该字段时按 0 处理，升级时不会踢掉在线会话。
 
 ### 3.3.2 图片上传
 | 方法 | 路径 | 说明 |
@@ -78,7 +81,7 @@
 | DELETE | `/posts/{id}` 🔒 | 删除自己的帖子（评论与点赞随帖级联，**评分保留**） |
 | POST | `/posts/{id}/like` 🔒 | 点赞/取消点赞（幂等切换），同步维护 `like_count` |
 | GET | `/posts/{id}/comments` | 评论列表（分页） |
-| POST | `/posts/{id}/comments` 🔒 | 发表评论，同步维护 `comment_count` |
+| POST | `/posts/{id}/comments` 🔒 | 发表评论，同步维护 `comment_count`。可选 `reply_to_id` 回复某条评论（须属于同一篇帖子，否则 404）；回复的通知发给父评论作者 |
 | DELETE | `/posts/{id}/comments/{cid}` 🔒 | 删除评论：本人或管理员；同步回减 `comment_count`，返回 `{comment_count}`。评论不属于该帖时按 404 处理 |
 
 ### 3.3.5 用户模块
@@ -135,6 +138,7 @@ CREATE TABLE users (
     is_admin TINYINT(1) NOT NULL DEFAULT 0 COMMENT '管理员标记',
     follower_count INT NOT NULL DEFAULT 0,
     following_count INT NOT NULL DEFAULT 0,
+    token_version INT NOT NULL DEFAULT 0 COMMENT '令牌版本：登出/改密 +1，旧 token 失效',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -219,10 +223,14 @@ CREATE TABLE comments (
     post_id BIGINT NOT NULL,
     user_id BIGINT NOT NULL,
     content TEXT NOT NULL,
+    reply_to_id BIGINT NULL COMMENT '回复的评论 id；顶层评论为 NULL',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_post (post_id, created_at),
+    KEY idx_comments_reply (reply_to_id),
     CONSTRAINT fk_comment_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-    CONSTRAINT fk_comment_user FOREIGN KEY (user_id) REFERENCES users(id)
+    CONSTRAINT fk_comment_user FOREIGN KEY (user_id) REFERENCES users(id),
+    -- SET NULL 而不是 CASCADE：父评论被删，回复要保留（退化成顶层评论）
+    CONSTRAINT fk_comment_reply_to FOREIGN KEY (reply_to_id) REFERENCES comments(id) ON DELETE SET NULL
 );
 
 -- 点赞表
@@ -376,7 +384,7 @@ WHERE r.user_id = :uid AND r.updated_at >= NOW() - INTERVAL 30 DAY;
 | 40301 | 403 | 无权限（非本人 / 非管理员） |
 | 40401 | 404 | 资源不存在 |
 | 40901 | 409 | 资源冲突（唯一键冲突 / 存在下级数据不可删） |
-| 42901 | 429 | 请求过于频繁（评论/发帖限流） |
+| 42901 | 429 | 登录失败次数过多（用户名 5 次 / IP 20 次，15 分钟窗口） |
 | 50000 | 500 | 服务器内部错误 |
 
 ### 3.7.3 分页参数
