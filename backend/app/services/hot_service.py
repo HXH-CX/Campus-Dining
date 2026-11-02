@@ -23,7 +23,7 @@ _cache: dict[str, object] = {"items": [], "expires_at": 0.0}
 
 
 async def get_hot(db: AsyncSession, viewer=None) -> list[PostOut]:
-    items = await _load(db)
+    items = await _prune_dead(db, await _load(db))
     if viewer is None:
         return items  # 已缓存的列表直接复用（调用方只读）
 
@@ -55,6 +55,31 @@ async def refresh(db: AsyncSession) -> None:
     _cache["items"] = items
     _cache["expires_at"] = time.monotonic() + CACHE_TTL_SECONDS
     logger.info("热榜已刷新，共 %d 条", len(items))
+
+
+async def _prune_dead(db: AsyncSession, items: list[PostOut]) -> list[PostOut]:
+    """剔除缓存里已被删除的帖子。
+
+    只靠 invalidate() 不够可靠：删帖有多条路径——本人删、后台应急删、脚本直连 SQL、
+    seed 重置，漏掉任何一条，热榜就会把一条点进去 404 的帖子一直挂到 TTL 到期
+    （最长一小时）。已踩过：`/admin/posts/{id}` 当初没调 invalidate，e2e 用它清理
+    测试帖，于是榜单上留了一条查不到详情的"幽灵帖子"。
+
+    这里用一次主键 IN 查询兜底。榜单最多 10 条，成本远低于重算那份五表 join，
+    不违背"不要在每次请求实时计算全量数据"——校验存活不等于重算榜单。
+    发现死条目顺手写回缓存，不必等 TTL 自愈。
+    """
+    if not items:
+        return items
+
+    alive = set(
+        (await db.execute(select(Post.id).where(Post.id.in_([i.id for i in items])))).scalars()
+    )
+    kept = [i for i in items if i.id in alive]
+    if len(kept) != len(items):
+        logger.info("热榜剔除 %d 条已删除的帖子", len(items) - len(kept))
+        _cache["items"] = kept
+    return kept
 
 
 def invalidate() -> None:

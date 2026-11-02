@@ -21,7 +21,7 @@ from app.schemas.catalog import (
     MerchantUpdate,
 )
 from app.schemas.post import PostOut
-from app.services import admin_service
+from app.services import admin_service, hot_service
 
 router = APIRouter(prefix="/admin", tags=["管理后台"], dependencies=[Depends(get_current_admin)])
 
@@ -145,4 +145,7 @@ async def list_posts(
 @router.delete("/posts/{post_id}", response_model=ApiResponse[None], summary="应急删除帖子")
 async def delete_post(post_id: int, db: DbSession):
     await admin_service.delete_post(db, post_id)
+    # 必须失效热榜：后台删的往往是已经上榜的违规帖，不失效就会让榜单
+    # 继续展示一条点进去 404 的帖子，最长挂到 TTL 到期（一小时）。
+    hot_service.invalidate()
     return ok(None, "已删除")

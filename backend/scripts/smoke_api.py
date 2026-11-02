@@ -432,8 +432,23 @@ def main():
     status, body = call("DELETE", f"/posts/{post_id}", token=smoke_token)
     check("删自己的帖子 200", status == 200, body)
     temp["posts"].discard(post_id)
-    status, body = call("DELETE", f"/posts/{post2_id}", token=smoke_token)
+    print("== 后台删帖：热榜不能残留")
+    # 热榜是进程内缓存（1 小时 TTL）。后台删帖曾经漏掉 invalidate，于是榜单上会挂一条
+    # 点进去 404 的帖子，最长一小时。这里走完整链路，防止这条路径再退化。
+    status, body = call("GET", "/posts/hot")
+    hot_before = [p["id"] for p in body["data"]] if status == 200 else []
+    check("今日新帖进入热榜", post2_id in hot_before, {"hot": hot_before, "post": post2_id})
+
+    status, body = call("DELETE", f"/admin/posts/{post2_id}", token=admin)
+    check("管理员应急删帖 200", status == 200, body)
     temp["posts"].discard(post2_id)
+
+    status, body = call("GET", "/posts/hot")
+    hot_after = [p["id"] for p in body["data"]] if status == 200 else []
+    check("删帖后热榜立即不包含它", post2_id not in hot_after, {"before": hot_before, "after": hot_after})
+
+    status, body = call("GET", f"/posts/{post2_id}")
+    check("已删帖子详情 404", status == 404, body)
 
     status, body = call("GET", f"/admin/dishes?merchant_id={p_merchant}", token=admin)
     dish_a = next(d for d in body["data"]["items"] if d["id"] == p_dishes[0])

@@ -211,7 +211,7 @@ docker compose up --build
 
 ```bash
 cd backend
-python scripts/smoke_api.py     # 98 项：权限、聚合、称号、删除保护、登录限流、令牌吊销、评论回复
+python scripts/smoke_api.py     # 102 项：权限、聚合、称号、删除保护、登录限流、令牌吊销、评论回复、热榜一致性
 python scripts/journey.py       # 167 项：按前端真实调用顺序验字段契约
 
 cd ../frontend
