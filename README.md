@@ -10,37 +10,37 @@
 ## 界面
 
 <p align="center">
-  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/home.png" alt="首页" width="760">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/home.png" alt="首页" width="580">
 </p>
 <p align="center"><sub>首页：高分榜、今日热榜、图文流（最新 / 最热 / 关注）</sub></p>
 
 <p align="center">
-  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/dish.png" alt="菜品详情" width="375">
-  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/random.png" alt="今天吃什么" width="375">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/dish.png" alt="菜品详情" width="285">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/random.png" alt="今天吃什么" width="285">
 </p>
 <p align="center"><sub>左：菜品详情（口味标签、想吃、这家还有）　右：一键随机抽一道菜，可换、可直接去吃</sub></p>
 
 <p align="center">
-  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/search.png" alt="搜索" width="375">
-  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/create.png" alt="发帖" width="375">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/search.png" alt="搜索" width="285">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/create.png" alt="发帖" width="285">
 </p>
 <p align="center"><sub>左：四页签搜索 + 口味标签筛选（还没菜的标签置灰）　右：发帖必须绑菜品并打分</sub></p>
 
 <p align="center">
-  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/notifications.png" alt="通知中心" width="375">
-  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/profile-liked.png" alt="我赞过的" width="375">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/notifications.png" alt="通知中心" width="285">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/profile-liked.png" alt="我赞过的" width="285">
 </p>
 <p align="center"><sub>左：通知中心（被赞 / 被评论 / 被关注）　右：个人主页「我赞过的」，仅本人可见</sub></p>
 
 <p align="center">
-  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/admin.png" alt="管理后台" width="760">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/admin.png" alt="管理后台" width="580">
 </p>
 <p align="center"><sub>管理后台：今日新增、近 7 天发帖趋势、待关注项（上架没人评 / 没有在售菜的商家）</sub></p>
 
 <p align="center">
-  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/mobile-home.png" alt="移动端首页" width="250">
-  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/mobile-dish.png" alt="移动端菜品页" width="250">
-  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/mobile-notifications.png" alt="移动端通知" width="250">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/mobile-home.png" alt="移动端首页" width="188">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/mobile-dish.png" alt="移动端菜品页" width="188">
+  <img src="https://gcore.jsdelivr.net/gh/HXH-CX/Campus-Dining@main/docs/screenshots/mobile-notifications.png" alt="移动端通知" width="188">
 </p>
 <p align="center"><sub>移动端：底部导航 + 中间抬起的发帖键，≤900px 顶栏搜索收成图标</sub></p>
 
