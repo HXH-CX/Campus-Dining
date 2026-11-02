@@ -1,0 +1,135 @@
+name: CI
+
+# 三套回归（smoke / journey / e2e）以前只能靠人记得在本地跑。
+# 这里把它们串成一条：MySQL 起在 service 容器里，后端跑完接口测试，
+# 前端再做类型检查、构建、真浏览器走一遍。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: campus_foodie
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      # 直接用环境变量覆盖配置，仓库里不放 .env（里面是本地密码）
+      DATABASE_URL: mysql+asyncmy://root:root@127.0.0.1:3306/campus_foodie
+      JWT_SECRET: ci-only-secret-not-for-production
+      DEBUG: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 准备 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: 安装后端依赖
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: 建表并灌种子
+        working-directory: backend
+        run: |
+          alembic upgrade head
+          python -m app.seed
+
+      - name: 启动后端
+        working-directory: backend
+        run: |
+          # 后台起服务，日志落到文件，失败时随 artifact 一起带走
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/backend.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8000/health > /dev/null; then
+              echo "后端已就绪"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "后端没有起来，日志："
+          cat /tmp/backend.log
+          exit 1
+
+      - name: 接口回归（smoke）
+        working-directory: backend
+        run: python scripts/smoke_api.py
+
+      - name: 字段契约（journey）
+        working-directory: backend
+        run: python scripts/journey.py
+
+      - name: 准备 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装前端依赖
+        working-directory: frontend
+        run: npm ci
+
+      - name: 类型检查
+        working-directory: frontend
+        run: npm run type-check
+
+      - name: 构建
+        working-directory: frontend
+        run: npm run build
+
+      - name: 启动前端
+        working-directory: frontend
+        run: |
+          nohup npm run dev > /tmp/frontend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:5173/ > /dev/null; then
+              echo "前端已就绪"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "前端没有起来，日志："
+          cat /tmp/frontend.log
+          exit 1
+
+      # ubuntu-latest 自带 Chrome，e2e 的 findChrome 能直接找到 /usr/bin/google-chrome，
+      # 这也是当初坚持用 CDP 而不是 puppeteer 的额外好处：CI 里不需要下载浏览器
+      - name: 真浏览器回归（e2e）
+        working-directory: frontend
+        run: npm run e2e
+
+      - name: 失败时保留日志与截图
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs
+          path: |
+            /tmp/backend.log
+            /tmp/frontend.log
+            frontend/.e2e-shots/
+          if-no-files-found: ignore
