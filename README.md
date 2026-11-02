@@ -1,5 +1,7 @@
 # 校园食光 (Campus Foodie)
 
+[![CI](https://github.com/HXH-CX/Campus-Dining/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/HXH-CX/Campus-Dining/actions/workflows/ci.yml)
+
 校园美食点评社区 MVP。管理员维护「食堂 → 商家 → 菜品」基础库，学生发帖点评必绑一道菜并打星，
 评分回写到菜品均分，再通过点赞/评论/24h 热榜和贡献度称号形成闭环。
 
