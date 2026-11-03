@@ -116,6 +116,7 @@ start.bat         # 仓库根：Windows 入口（双击即可）
 start.sh          # 仓库根：macOS / Linux 入口
 docs/screenshots/ # 仓库根：README 用的界面截图，由 shots.mjs 生成
 Research.md  PDR.md  TechDesigh.md  AGENTS.md   # 需求、设计、协作约束
+LEARNING.md       # 仓库根：怎么吃透这个项目（六个阶段 + 通关标准）
 ```
 
 ## 快速开始
@@ -239,6 +240,7 @@ npm run e2e                     # 41 项：真浏览器走一遍关键交互
 | `PDR.md` | 功能范围、页面清单、业务规则、决策记录 |
 | `TechDesigh.md` | 数据模型、API 契约、错误码、聚合策略、前端约定 |
 | `AGENTS.md` | 协作边界与 42 条「实现时不得偏离」的技术契约 |
+| `LEARNING.md` | **怎么吃透这个项目**：六个阶段、三种练法、12 个必读文件、5 个改造挑战。适合「代码是别人写的、想真正搞懂」的人 |
 
 ## 已知边界（MVP 有意不做）
 
