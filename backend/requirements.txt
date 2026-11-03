@@ -1,13 +1,16 @@
-fastapi>=0.115.0
-uvicorn[standard]>=0.32.0
-sqlalchemy[asyncio]>=2.0.36
-asyncmy>=0.2.9
+# 全部锁定到精确版本：>= 会让「今天装」和「半年后装」得到不同结果，
+# 上游一个大版本（例如 pydantic 3.0）就能让项目无故起不来。
+# 升级依赖请显式改这里的版本号，然后跑一遍 smoke + journey + e2e。
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+sqlalchemy[asyncio]==2.1.6
+asyncmy==0.2.17
 # MySQL 8 默认 caching_sha2_password，驱动需要它做握手
-cryptography>=43.0.0
-alembic>=1.14.0
-pydantic>=2.9.0
-pydantic-settings>=2.6.0
-PyJWT>=2.9.0
-bcrypt>=4.2.0
-python-multipart>=0.0.12
-apscheduler>=3.10.4
+cryptography==50.0.2
+alembic==1.20.1
+pydantic==2.14.2
+pydantic-settings==2.16.2
+PyJWT==2.15.1
+bcrypt==5.0.0
+python-multipart==0.0.32
+apscheduler==3.11.3
